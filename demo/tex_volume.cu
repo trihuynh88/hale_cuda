@@ -306,6 +306,14 @@ void normalize(double *a, int s)
         a[i] = a[i]/len;
 }
 
+__host__ __device__
+double diss2P(double x1,double y1,double z1,double x2,double y2,double z2)
+{
+    double dis1 = x2-x1;
+    double dis2 = y2-y1;
+    double dis3 = z2-z1;
+    return (dis1*dis1+dis2*dis2+dis3*dis3);
+}
 
 __global__
 void kernel(int* dim, int *size, double hor_extent, double ver_extent, int channel, int pixSize, double *center, double *viewdir, double *right, double *up, double *light_dir,
@@ -399,6 +407,158 @@ void kernel(int* dim, int *size, double hor_extent, double ver_extent, int chann
         imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = 0;        
     }
     imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = accAlpha;    
+}
+
+__global__
+void kernel_combined(int* dim, int *size, double hor_extent, double ver_extent, int channel, int pixSize, double *center, double *viewdir, double *right, double *up, double *light_dir,
+        double nc, double fc, double raystep, double refstep, double* mat_trans, double* mat_trans_inv, double* MT_BE_inv, double phongKa, double phongKd, double isoval, double alphamax, double thickness,
+        double trackx, double tracky, double trackz, double radius, int nOutChannel, double* imageDouble, int* imageMask
+        )
+{
+    int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int j = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    if ((i>=size[0]) || (j>=size[1]))
+        return;
+
+    double hor_ratio = hor_extent/size[0];
+    double ver_ratio = ver_extent/size[1];
+    int ni = i-size[0]/2;
+    int nj = size[1]/2 - j;
+
+    double startPoint1[4];
+    startPoint1[3] = 1;
+    advancePoint(center,right,ni*ver_ratio,startPoint1);
+    double startPoint2[4];
+    startPoint2[3] = 1;
+    advancePoint(startPoint1,up,nj*hor_ratio,startPoint2);
+
+    memcpy(startPoint1,startPoint2,4*sizeof(double));
+
+    double accColor = 0;
+    double transp = 1;    
+    double indPoint[4];
+    double val;
+    double gradi[3];
+    double gradw[3];
+    double gradw_len;
+    //double gradi_len;
+    double depth;
+    double pointColor;
+    double alpha;
+    double mipVal = -1;
+    double valgfp;
+    double mipValR = -1;
+    double mipValG = -1;
+
+    cu_mulMatPoint(mat_trans_inv,startPoint1,indPoint);
+    double vecview[4];
+    memcpy(vecview,viewdir,3*sizeof(double));
+    vecview[3] = 0;
+    double vecviewi[4];
+    cu_mulMatPoint(mat_trans_inv,vecview,vecviewi);
+    double vecdiff[3];
+    vecdiff[0] = indPoint[0]-trackx;
+    vecdiff[1] = indPoint[1]-tracky;
+    vecdiff[2] = indPoint[2]-trackz;
+    double lendiff = lenVec(vecdiff,3);
+    double lenview = lenVec(vecviewi,3);
+    double dotres = dotProduct(vecdiff,vecviewi,3);
+    double diss = (lendiff*lendiff*lenview*lenview-dotres*dotres)/(lenview*lenview);
+
+    bool isCloseTrack = (diss<=(radius*radius));
+    imageMask[j*size[0]+i] =(int)isCloseTrack;
+
+    for (double k=0; k<fc-nc; k+=raystep)
+    {
+        advancePoint(startPoint1,viewdir,raystep,startPoint2);
+
+        cu_mulMatPoint(mat_trans_inv,startPoint1,indPoint);
+        if (cu_isInsideDouble(indPoint[0],indPoint[1],indPoint[2],dim[1],dim[2],dim[3]))
+        {
+            if (!isCloseTrack)
+            {
+                val = tex3DBicubic<float,float>(tex1,indPoint[0],indPoint[1],indPoint[2]);
+                
+                gradi[0] = tex3DBicubic_GX<float,float>(tex1,indPoint[0],indPoint[1],indPoint[2]);
+                gradi[1] = tex3DBicubic_GY<float,float>(tex1,indPoint[0],indPoint[1],indPoint[2]);
+                gradi[2] = tex3DBicubic_GZ<float,float>(tex1,indPoint[0],indPoint[1],indPoint[2]);
+
+                cu_mulMatPoint3(MT_BE_inv, gradi, gradw);
+                gradw_len = lenVec(gradw,3);
+
+                //negating and normalizing
+                for (int l=0; l<3; l++)
+                    gradw[l] = -gradw[l]/gradw_len;
+
+                depth = (k*1.0+1)/(fc*1.0-nc);
+
+                pointColor = phongKa + depth*phongKd*max(0.0f,dotProduct(gradw,light_dir,3));
+                alpha = cu_computeAlpha(val, gradw_len, isoval, alphamax, thickness);
+                alpha = 1 - pow(1-alpha,raystep/refstep);
+                transp *= (1-alpha);
+                accColor = accColor*(1-alpha) + pointColor*alpha;
+
+                valgfp = tex3DBicubic<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
+
+                mipVal = max(mipVal,valgfp*cu_inAlpha(val,gradw_len,isoval,thickness));
+            }
+            else
+            {
+                double diss = diss2P(indPoint[0],indPoint[1],indPoint[2],trackx,tracky,trackz);
+                if (diss<=(radius*radius))
+                {
+                    if (((radius*radius)-diss)<1)
+                    {
+                        gradi[0] = indPoint[0]-trackx;
+                        gradi[1] = indPoint[1]-tracky;
+                        gradi[2] = indPoint[2]-trackz;
+
+                        cu_mulMatPoint3(MT_BE_inv, gradi, gradw);
+                            gradw_len = lenVec(gradw,3);
+
+                        //negating and normalizing
+                        for (int l=0; l<3; l++)
+                            gradw[l] = -gradw[l]/gradw_len;
+
+                        pointColor = phongKa + depth*phongKd*max(0.0f,dotProduct(gradw,light_dir,3));
+                    }
+                    val = tex3DBicubic<float,float>(tex1,indPoint[0],indPoint[1],indPoint[2]);
+                    mipValR = max(mipValR,val);
+                    valgfp = tex3DBicubic<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
+                    mipValG = max(mipValG,valgfp);
+                }
+            }
+        }
+
+        memcpy(startPoint1,startPoint2,4*sizeof(double));
+    }
+    
+    if (!isCloseTrack)
+    {
+        double accAlpha = 1 - transp;
+        
+        if (accAlpha>0)
+        {        
+            imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = accColor/accAlpha;
+            imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = mipVal;
+            imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = 0;
+        }
+        else
+        {        
+            imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = accColor;
+            imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = mipVal;
+            imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = 0;        
+        }
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = accAlpha;    
+    }
+    else
+    {
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = 0;
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = mipValG;
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = pointColor;        
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = 255;    
+    }
 }
 
 double calDet44(double X[][4])
@@ -518,6 +678,16 @@ void quantizeImageDouble3D(double *input, unsigned char *output, int s0, int s1,
                 output[i*s1*s0+j*s0+k] = quantizeDouble(input[i*s1*s0+j*s0+k],minVal[k],maxVal[k]);
             }
 }
+
+void applyMask(unsigned char *input, int s0, int s1, int s2, int *mask, unsigned char *output)
+{
+    for (int i=0; i<s2; i++)
+        for (int j=0; j<s1; j++)
+            for (int k=0; k<s0; k++)
+            {
+                output[i*s1*s0+j*s0+k] = input[i*s1*s0+j*s0+k]*mask[i*s1+j];
+            }
+}
 //---end of cuda_volume_rendering functions
 
 void render(Hale::Viewer *viewer){
@@ -535,6 +705,10 @@ main(int argc, const char **argv) {
 
   char *name;
   char *texname1, *texname2;
+
+  //tmp fixed track coords, and radius
+  double track[3] = {366.653991263,89.6381792864,104.736646409};
+  double radius = 10;
 
   /* variables learned via hest */
   //float camfr[3], camat[3], camup[3], camnc, camfc, camFOV;
@@ -817,6 +991,7 @@ main(int argc, const char **argv) {
     int nOutChannel = 4;
 
     double *imageDouble = new double[size[0]*size[1]*nOutChannel];
+    int *imageMask = new int[size[0]*size[1]];
 
     //CUDA Var
 
@@ -826,6 +1001,9 @@ main(int argc, const char **argv) {
 
     double *d_imageDouble;
     cudaMalloc(&d_imageDouble,sizeof(double)*size[0]*size[1]*nOutChannel);
+
+    int *d_imageMask;
+    cudaMalloc(&d_imageMask,sizeof(int)*size[0]*size[1]);
 
     int *d_size;
     cudaMalloc(&d_size,2*sizeof(int));
@@ -866,12 +1044,19 @@ main(int argc, const char **argv) {
     int numThread1D = 16;
     dim3 threadsPerBlock(numThread1D,numThread1D);
     dim3 numBlocks((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
-
+/*
     kernel<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, hor_extent, ver_extent, channel, pixSize,
                                           d_center, d_viewdir, d_right, d_up, d_light_dir, nc, fc, raystep, refstep, d_mat_trans,
                                           d_mat_trans_inv, d_MT_BE_inv, phongKa, phongKd, isoval, alphamax, thickness, nOutChannel, d_imageDouble                                          
                                           );
-    
+ */
+
+    kernel_combined<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, hor_extent, ver_extent, channel, pixSize,
+                                          d_center, d_viewdir, d_right, d_up, d_light_dir, nc, fc, raystep, refstep, d_mat_trans,
+                                          d_mat_trans_inv, d_MT_BE_inv, phongKa, phongKd, isoval, alphamax, thickness, 
+                                          track[0],track[1],track[2],radius,nOutChannel, d_imageDouble, d_imageMask                        
+                                          );
+
     cudaError_t errCu = cudaGetLastError();
     if (errCu != cudaSuccess) 
         printf("Error: %s\n", cudaGetErrorString(errCu));
@@ -881,13 +1066,16 @@ main(int argc, const char **argv) {
         printf("Error Sync: %s\n", cudaGetErrorString(errCu));
 
     cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+    cudaMemcpy(imageMask, d_imageMask, sizeof(int)*size[0]*size[1], cudaMemcpyDeviceToHost);
 
     short width = size[0];
     short height = size[1];
 
     //double *imageSave = new double[size[0]*size[1]];
     unsigned char *imageQuantized = new unsigned char[size[0]*size[1]*4];
+    unsigned char *imageQuantizedMask = new unsigned char[size[0]*size[1]*4];
     quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);
+    applyMask(imageQuantized,4,size[0],size[1],imageMask,imageQuantizedMask);
 //end of cuda_rendering
 
   limnPolyData *lpld = limnPolyDataNew();
@@ -925,11 +1113,11 @@ main(int argc, const char **argv) {
   glm::vec3 preFrom = viewer.camera.from();
   glm::vec3 preAt = viewer.camera.at();
   glm::vec3 preUp = viewer.camera.up();
+  bool isMasked = false;
 
   while(!Hale::finishing){
     glfwWaitEvents();
-  //hpld.replaceLastTexture((unsigned char *)nimg2->data,200,200,3);
-
+  //hpld.replaceLastTexture((unsigned char *)nimg2->data,200,200,3);    
     if ((viewer.camera.from() != preFrom || viewer.camera.at()!=preAt || viewer.camera.up()!=preUp)
         && (viewer.isMouseReleased()))
     {
@@ -991,10 +1179,16 @@ main(int argc, const char **argv) {
 
         cudaMemcpy(d_right,right,3*sizeof(double), cudaMemcpyHostToDevice);
 
-
+/*
         kernel<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, hor_extent, ver_extent, channel, pixSize,
                                               d_center, d_viewdir, d_right, d_up, d_light_dir, nc, fc, raystep, refstep, d_mat_trans,
                                               d_mat_trans_inv, d_MT_BE_inv, phongKa, phongKd, isoval, alphamax, thickness, nOutChannel, d_imageDouble                                          
+                                              );
+*/
+        kernel_combined<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, hor_extent, ver_extent, channel, pixSize,
+                                              d_center, d_viewdir, d_right, d_up, d_light_dir, nc, fc, raystep, refstep, d_mat_trans,
+                                              d_mat_trans_inv, d_MT_BE_inv, phongKa, phongKd, isoval, alphamax, thickness, 
+                                              track[0],track[1],track[2],radius,nOutChannel, d_imageDouble, d_imageMask                        
                                               );
         
         errCu = cudaGetLastError();
@@ -1006,8 +1200,25 @@ main(int argc, const char **argv) {
             printf("Error Sync: %s\n", cudaGetErrorString(errCu));
 
         cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+        cudaMemcpy(imageMask, d_imageMask, sizeof(int)*size[0]*size[1], cudaMemcpyDeviceToHost);
         quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);
-        hpld.replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+        applyMask(imageQuantized,4,size[0],size[1],imageMask,imageQuantizedMask);
+        isMasked = viewer.isMasked();
+        if (!isMasked)
+            hpld.replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+        else
+            hpld.replaceLastTexture((unsigned char *)imageQuantizedMask,size[0],size[1],4);
+    }
+    else
+    {
+        if (isMasked!=viewer.isMasked())
+        {            
+            isMasked = viewer.isMasked();
+            if (!isMasked)
+                hpld.replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+            else
+                hpld.replaceLastTexture((unsigned char *)imageQuantizedMask,size[0],size[1],4);
+        }
     }
     render(&viewer);
   }

@@ -622,34 +622,6 @@ main(int argc, const char **argv) {
   viewer.refreshData(&viewer);
   viewer.current();
 
-  Nrrd *nimg = nrrdNew();
-  if (nrrdLoad(nimg, texname1, NULL)) {
-//  if (nrrdLoad(nimg, "/home/trihuynh/Desktop/Research/softwares/hale/hale/tmp.png", NULL)) {
-     char *err = biffGetDone(NRRD);
-     printf("couldn't load image A:\n%s\n", err);
-     nrrdNuke(nimg); return 0;
-  }
-  if (!(3 == nimg->dim && 3 == nimg->axis[0].size && nrrdTypeUChar == nimg->type)) {
-     printf("did not get a 3D 3-by-X-by-Y unsigned char image "
-            "(got %u-D %u-by-? %s array)\n", nimg->dim, (unsigned int)nimg->axis[0].size,
-            airEnumStr(nrrdType, nimg->type));
-     nrrdNuke(nimg); return 0;
-  }  
-
-  Nrrd *nimg2 = nrrdNew();
-  if (nrrdLoad(nimg2, texname2, NULL)) {
-//  if (nrrdLoad(nimg2, "/home/trihuynh/Desktop/Research/softwares/hale/hale/tmp2.png", NULL)) {
-     char *err = biffGetDone(NRRD);
-     printf("couldn't load image B:\n%s\n", err);
-     nrrdNuke(nimg2); return 0;
-  }
-  if (!(3 == nimg2->dim && 3 == nimg2->axis[0].size && nrrdTypeUChar == nimg2->type)) {
-     printf("did not get a 3D 3-by-X-by-Y unsigned char image "
-            "(got %u-D %u-by-? %s array)\n", nimg2->dim, (unsigned int)nimg2->axis[0].size,
-            airEnumStr(nrrdType, nimg2->type));
-     nrrdNuke(nimg2); return 0;
-  }  
-
   Hale::Program *newprog = new Hale::Program("texdemo-vert.glsl","texdemo-frag.glsl");
   newprog->compile();
   newprog->bindAttribute(Hale::vertAttrIdxXYZW, "positionVA");

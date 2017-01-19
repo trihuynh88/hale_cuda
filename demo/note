@@ -1,0 +1,2 @@
+//compiling cuda+c11 code
+nvcc -std=c++11 -I/home/trihuynh/hale-install/include -I/home/trihuynh/Desktop/Research/softwares/teem-install/include -I/usr/local/include/glm/ tex_volume.cu -o tex_volume  -L/home/trihuynh/hale-install/lib -L/home/trihuynh/Desktop/Research/softwares/teem-install/lib -L/usr/local/include/glm/ -lglfw3 -lGL -lm -ldl -lXinerama -lXrandr -lXi -lXcursor -lX11 -lXxf86vm -lpthread -lhale -lteem -lpng -lz -lbz2 -lGL -lX11 -lXxf86vm -lXrandr -lpthread -lXi

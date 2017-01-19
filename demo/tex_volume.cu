@@ -688,6 +688,14 @@ void applyMask(unsigned char *input, int s0, int s1, int s2, int *mask, unsigned
                 output[i*s1*s0+j*s0+k] = input[i*s1*s0+j*s0+k]*mask[i*s1+j];
             }
 }
+
+void removeChannel(unsigned char *input, int s0, int s1, int s2, int chan, unsigned char *output)
+{
+    memcpy(output,input,s0*s1*s2*sizeof(unsigned char));
+    for (int i=0; i<s2; i++)
+        for (int j=0; j<s1; j++)
+                output[i*s1*s0+j*s0+chan] = 0;            
+}
 //---end of cuda_volume_rendering functions
 
 void render(Hale::Viewer *viewer){
@@ -1074,8 +1082,12 @@ main(int argc, const char **argv) {
     //double *imageSave = new double[size[0]*size[1]];
     unsigned char *imageQuantized = new unsigned char[size[0]*size[1]*4];
     unsigned char *imageQuantizedMask = new unsigned char[size[0]*size[1]*4];
+    unsigned char *imageQuantizedNoB = new unsigned char[size[0]*size[1]*4];
+    unsigned char *imageQuantizedMaskNoB = new unsigned char[size[0]*size[1]*4];
     quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);
     applyMask(imageQuantized,4,size[0],size[1],imageMask,imageQuantizedMask);
+    removeChannel(imageQuantized,4,size[0],size[1],2,imageQuantizedNoB);
+    removeChannel(imageQuantizedMask,4,size[0],size[1],2,imageQuantizedMaskNoB);
 //end of cuda_rendering
 
   limnPolyData *lpld = limnPolyDataNew();
@@ -1114,6 +1126,7 @@ main(int argc, const char **argv) {
   glm::vec3 preAt = viewer.camera.at();
   glm::vec3 preUp = viewer.camera.up();
   bool isMasked = false;
+  bool stateBKey = false;
 
   while(!Hale::finishing){
     glfwWaitEvents();
@@ -1203,21 +1216,45 @@ main(int argc, const char **argv) {
         cudaMemcpy(imageMask, d_imageMask, sizeof(int)*size[0]*size[1], cudaMemcpyDeviceToHost);
         quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);
         applyMask(imageQuantized,4,size[0],size[1],imageMask,imageQuantizedMask);
+        removeChannel(imageQuantized,4,size[0],size[1],2,imageQuantizedNoB);
+        removeChannel(imageQuantizedMask,4,size[0],size[1],2,imageQuantizedMaskNoB);
         isMasked = viewer.isMasked();
+        stateBKey = viewer.getStateBKey();
         if (!isMasked)
-            hpld.replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+        {
+            if (!stateBKey)        
+                hpld.replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+            else
+                hpld.replaceLastTexture((unsigned char *)imageQuantizedNoB,size[0],size[1],4);
+        }
         else
-            hpld.replaceLastTexture((unsigned char *)imageQuantizedMask,size[0],size[1],4);
+        {
+            if (!stateBKey)
+                hpld.replaceLastTexture((unsigned char *)imageQuantizedMask,size[0],size[1],4);
+            else
+                hpld.replaceLastTexture((unsigned char *)imageQuantizedMaskNoB,size[0],size[1],4);
+        }
     }
     else
     {
-        if (isMasked!=viewer.isMasked())
+        if (isMasked!=viewer.isMasked() || stateBKey!=viewer.getStateBKey())
         {            
             isMasked = viewer.isMasked();
+            stateBKey = viewer.getStateBKey();
             if (!isMasked)
-                hpld.replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+            {
+                if (!stateBKey)        
+                    hpld.replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+                else
+                    hpld.replaceLastTexture((unsigned char *)imageQuantizedNoB,size[0],size[1],4);
+            }
             else
-                hpld.replaceLastTexture((unsigned char *)imageQuantizedMask,size[0],size[1],4);
+            {
+                if (!stateBKey)
+                    hpld.replaceLastTexture((unsigned char *)imageQuantizedMask,size[0],size[1],4);
+                else
+                    hpld.replaceLastTexture((unsigned char *)imageQuantizedMaskNoB,size[0],size[1],4);
+            }
         }
     }
     render(&viewer);

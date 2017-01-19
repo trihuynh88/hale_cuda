@@ -329,6 +329,7 @@ class Viewer {
 
   bool isMouseReleased();
   bool isMasked();
+  bool getStateBKey();
 
  protected:
   glm::vec3 _lightDir;
@@ -356,6 +357,7 @@ class Viewer {
     _slmin, _slmax;  // range of possible slider values
   int *_tvalue; // value to toggle via space bar
   int _stateMasked;
+  int _stateBKey;
 
   GLFWwindow *_window; // the window we manage
   static void cursorPosCB(GLFWwindow *gwin, double xx, double yy);

@@ -233,9 +233,10 @@ Viewer::keyCB(GLFWwindow *gwin, int key, int scancode, int action, int mods) {
       *(vwr->_tvalue) = !(*(vwr->_tvalue));
       printf("%s: toggle is now %d\n", me, *(vwr->_tvalue));
     }
-  } else if (GLFW_KEY_M  == key && GLFW_PRESS == action) {
-	printf("M KEY PRESSED!!!\n");
+  } else if (GLFW_KEY_M  == key && GLFW_PRESS == action) {	
 	vwr->_stateMasked = (1-(vwr->_stateMasked));
+  } else if (GLFW_KEY_B  == key && GLFW_PRESS == action) {
+	vwr->_stateBKey = (1-(vwr->_stateBKey));
   }
 
   return;
@@ -646,6 +647,7 @@ Viewer::Viewer(int width, int height, const char *label, Scene *scene) {
   _slidable = false;
   _sliding = false;
   _stateMasked = 0;
+  _stateBKey = 0;
 
   // http://www.glfw.org/docs/latest/window.html
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); // Use OpenGL Core v3.2
@@ -792,6 +794,11 @@ bool Viewer::isMouseReleased()
 bool Viewer::isMasked()
 {
   return (_stateMasked!=0);
+}
+
+bool Viewer::getStateBKey()
+{
+  return (_stateBKey!=0);
 }
 
 } // namespace Hale

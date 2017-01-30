@@ -716,6 +716,12 @@ main(int argc, const char **argv) {
 
   //tmp fixed track coords, and radius
   double track[3] = {366.653991263,89.6381792864,104.736646409};
+  double trackhomo[4];
+  trackhomo[0] = track[0];
+  trackhomo[1] = track[1];
+  trackhomo[2] = track[2];
+  trackhomo[3] = 1;
+  double trackw[4];
   double radius = 10;
 
   /* variables learned via hest */
@@ -794,7 +800,8 @@ main(int argc, const char **argv) {
   Hale::Scene scene;
   /* then create viewer (in order to create the OpenGL context) */
   Hale::Viewer viewer(size[0], size[1], "Volume_Rendering_Hale", &scene);
-  viewer.lightDir(glm::vec3(-1.0f, 1.0f, 3.0f));
+  //viewer.lightDir(glm::vec3(-1.0f, 1.0f, 3.0f));
+  viewer.lightDir(glm::vec3(light_dir[0], light_dir[1], light_dir[2]));
   viewer.camera.init(glm::vec3(fr[0], fr[1], fr[2]),
                      glm::vec3(at[0], at[1], at[2]),
                      glm::vec3(up[0], up[1], up[2]),
@@ -1120,7 +1127,74 @@ main(int argc, const char **argv) {
 */
   scene.drawInit();
   render(&viewer);
+
+
+  //--------------------testing another scene with simple square--------
+  /*
+  float camfr[3] = {0,0,8}, camat[3] = {0,0,0}, camup[3] = {1,0,0}, camnc=-1, camfc=1, camFOV=20;
+  camortho = 1;
+  unsigned int camsize[2] = {640,480};
+  Hale::Scene scene2;
+  Hale::Viewer viewer2(camsize[0], camsize[1], "Iso", &scene2);
+  viewer2.lightDir(glm::vec3(-1.0f, 1.0f, 3.0f));
+  viewer2.camera.init(glm::vec3(camfr[0], camfr[1], camfr[2]),
+                     glm::vec3(camat[0], camat[1], camat[2]),
+                     glm::vec3(camup[0], camup[1], camup[2]),
+                     camFOV, (float)camsize[0]/camsize[1],
+                     camnc, camfc, camortho);
+  viewer2.refreshCB((Hale::ViewerRefresher)render);
+  viewer2.refreshData(&viewer2);
+  viewer2.current();
+*/
+  
+  /*
+  limnPolyData *lpld2 = limnPolyDataNew();
+  limnPolyDataSquare(lpld2, 1 << limnPolyDataInfoNorm);
+
+  Hale::Polydata hpld2(lpld2, true,
+                       Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+                       "square");
+  hpld2.colorSolid(1,0.5,0.5);
+  mulMatPoint(mat_trans,trackhomo,trackw);
+  glm::mat4 mmat = glm::mat4();
+  mmat[0][0] = 100;
+  mmat[1][1] = 100;
+  mmat[3][0] = trackw[0];
+  mmat[3][1] = trackw[1];
+  mmat[3][2] = trackw[2];
+  hpld2.model(mmat);
+  scene.remove(&hpld);
+  scene.add(&hpld2);
+  scene.drawInit();
+  glDepthMask(GL_TRUE);
+  glDepthFunc(GL_ALWAYS);
+  glDepthRange(0.0f, 1.0f);
+  render(&viewer);
+  //viewer.draw();
+  
+  
+  //----------------------------
+  
+
+  GLfloat* zbuffer = new GLfloat[size[0]*size[1]];
+  glReadPixels(0,0,size[0],size[1],GL_DEPTH_COMPONENT,GL_FLOAT,zbuffer);
+  printf("Z-buffer\n");
+  float minz=1000,maxz=-1000;
+  for (int i=0; i<size[0]*size[1]; i++)
+  {
+    if (zbuffer[i]<minz)
+        minz = zbuffer[i];
+    if (zbuffer[i]>maxz)
+        maxz = zbuffer[i];
+  }
+  printf("minmaxz = (%f,%f)\n",minz,maxz );
+    //printf("%f ", zbuffer[i]);
+  //viewer.bufferSwap();
+
+  return 0;
+
   int count=0;
+  */
 
   glm::vec3 preFrom = viewer.camera.from();
   glm::vec3 preAt = viewer.camera.at();

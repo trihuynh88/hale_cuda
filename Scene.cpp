@@ -36,6 +36,7 @@ Scene::~Scene() {
 }
 
 void Scene::add(const Polydata *pd) { _polydata.push_back(pd); }
+void Scene::remove(const Polydata *pd) { _polydata.remove(pd); }
 
 void Scene::bgColor(float rr, float gg, float bb) { ELL_3V_SET(_bgColor, rr, gg, bb); }
 

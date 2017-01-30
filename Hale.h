@@ -497,6 +497,7 @@ class Scene {
   ~Scene();
 
   void add(const Polydata *pd);
+  void remove(const Polydata *pd);
 
   /* set/get background color */
   void bgColor(float rr, float gg, float bb);

@@ -69,6 +69,33 @@ float w3g(float a)
     return (1.0f/2.0f)*a*a;
 }
 
+//second derivatives of basic functions
+__host__ __device__
+float w0gg(float a)
+{
+    return 1-a;
+}
+
+__host__ __device__
+float w1gg(float a)
+{
+
+    return 3*a-2;
+}
+
+__host__ __device__
+float w2gg(float a)
+{
+    return 1-3*a;
+}
+
+__host__ __device__
+float w3gg(float a)
+{
+    return a;
+}
+
+
 
 // filter 4 values using cubic splines
 template<class T>
@@ -95,6 +122,20 @@ T cubicFilter_G(float x, T c0, T c1, T c2, T c3)
     r += c3 * w3g(x);
     return r;
 }
+
+//filtering with second derivative of basic functions
+template<class T>
+__device__
+T cubicFilter_GG(float x, T c0, T c1, T c2, T c3)
+{
+    T r;
+    r = c0 * w0gg(x);
+    r += c1 * w1gg(x);
+    r += c2 * w2gg(x);
+    r += c3 * w3gg(x);
+    return r;
+}
+
 
 template<class T, class R>  // texture data type, return type
 __device__
@@ -204,6 +245,146 @@ R tex3DBicubic_GZ(const texture<T, 3, cudaReadModeElementType> texref, float x, 
                             );
 }
 
+template<class T, class R>  // texture data type, return type
+__device__
+R tex3DBicubicXY_GGX(const texture<T, 3, cudaReadModeElementType> texref, float x, float y, float z)
+{
+    float px = floor(x);
+    float py = floor(y);
+    float fx = x - px;
+    float fy = y - py;
+
+    return cubicFilter<R>(fy,
+                          cubicFilter_GG<R>(fx, tex3D(texref, px-1, py-1,z), tex3D(texref, px, py-1,z), tex3D(texref, px+1, py-1,z), tex3D(texref, px+2,py-1,z)),
+                          cubicFilter_GG<R>(fx, tex3D(texref, px-1, py,z),   tex3D(texref, px, py,z),   tex3D(texref, px+1, py,z),   tex3D(texref, px+2, py,z)),
+                          cubicFilter_GG<R>(fx, tex3D(texref, px-1, py+1,z), tex3D(texref, px, py+1,z), tex3D(texref, px+1, py+1,z), tex3D(texref, px+2, py+1,z)),
+                          cubicFilter_GG<R>(fx, tex3D(texref, px-1, py+2,z), tex3D(texref, px, py+2,z), tex3D(texref, px+1, py+2,z), tex3D(texref, px+2, py+2,z))
+                         );
+}
+
+template<class T, class R>  // texture data type, return type
+__device__
+R tex3DBicubicXY_GGY(const texture<T, 3, cudaReadModeElementType> texref, float x, float y, float z)
+{
+    float px = floor(x);
+    float py = floor(y);
+    float fx = x - px;
+    float fy = y - py;
+
+    return cubicFilter_GG<R>(fy,
+                          cubicFilter<R>(fx, tex3D(texref, px-1, py-1,z), tex3D(texref, px, py-1,z), tex3D(texref, px+1, py-1,z), tex3D(texref, px+2,py-1,z)),
+                          cubicFilter<R>(fx, tex3D(texref, px-1, py,z),   tex3D(texref, px, py,z),   tex3D(texref, px+1, py,z),   tex3D(texref, px+2, py,z)),
+                          cubicFilter<R>(fx, tex3D(texref, px-1, py+1,z), tex3D(texref, px, py+1,z), tex3D(texref, px+1, py+1,z), tex3D(texref, px+2, py+1,z)),
+                          cubicFilter<R>(fx, tex3D(texref, px-1, py+2,z), tex3D(texref, px, py+2,z), tex3D(texref, px+1, py+2,z), tex3D(texref, px+2, py+2,z))
+                         );
+}
+
+//derivative through X, then through Y
+template<class T, class R>  // texture data type, return type
+__device__
+R tex3DBicubicXY_GYGX(const texture<T, 3, cudaReadModeElementType> texref, float x, float y, float z)
+{
+    float px = floor(x);
+    float py = floor(y);
+    float fx = x - px;
+    float fy = y - py;
+
+    return cubicFilter_G<R>(fy,
+                          cubicFilter_G<R>(fx, tex3D(texref, px-1, py-1,z), tex3D(texref, px, py-1,z), tex3D(texref, px+1, py-1,z), tex3D(texref, px+2,py-1,z)),
+                          cubicFilter_G<R>(fx, tex3D(texref, px-1, py,z),   tex3D(texref, px, py,z),   tex3D(texref, px+1, py,z),   tex3D(texref, px+2, py,z)),
+                          cubicFilter_G<R>(fx, tex3D(texref, px-1, py+1,z), tex3D(texref, px, py+1,z), tex3D(texref, px+1, py+1,z), tex3D(texref, px+2, py+1,z)),
+                          cubicFilter_G<R>(fx, tex3D(texref, px-1, py+2,z), tex3D(texref, px, py+2,z), tex3D(texref, px+1, py+2,z), tex3D(texref, px+2, py+2,z))
+                         );
+}
+
+template<class T, class R>
+__device__
+R tex3DBicubic_GGX(const texture<T, 3, cudaReadModeElementType> texref, float x, float y, float z)
+{
+    float pz = floor(z);
+    float fz = z - pz;
+    return cubicFilter<R>(fz,
+                          tex3DBicubicXY_GGX<T,R>(texref,x,y,pz-1),
+                          tex3DBicubicXY_GGX<T,R>(texref,x,y,pz),
+                          tex3DBicubicXY_GGX<T,R>(texref,x,y,pz+1),
+                          tex3DBicubicXY_GGX<T,R>(texref,x,y,pz+2)
+                          );
+}
+
+template<class T, class R>
+__device__
+R tex3DBicubic_GGY(const texture<T, 3, cudaReadModeElementType> texref, float x, float y, float z)
+{
+    float pz = floor(z);
+    float fz = z - pz;
+    return cubicFilter<R>(fz,
+                          tex3DBicubicXY_GGY<T,R>(texref,x,y,pz-1),
+                          tex3DBicubicXY_GGY<T,R>(texref,x,y,pz),
+                          tex3DBicubicXY_GGY<T,R>(texref,x,y,pz+1),
+                          tex3DBicubicXY_GGY<T,R>(texref,x,y,pz+2)
+                          );
+}
+
+template<class T, class R>
+__device__
+R tex3DBicubic_GGZ(const texture<T, 3, cudaReadModeElementType> texref, float x, float y, float z)
+{
+    float pz = floor(z);
+    float fz = z - pz;
+    return cubicFilter_GG<R>(fz,
+                            tex3DBicubicXY<T,R>(texref,x,y,pz-1),
+                            tex3DBicubicXY<T,R>(texref,x,y,pz),
+                            tex3DBicubicXY<T,R>(texref,x,y,pz+1),
+                            tex3DBicubicXY<T,R>(texref,x,y,pz+2)
+                            );
+}
+
+//derivative through X, then through Y
+template<class T, class R>
+__device__
+R tex3DBicubic_GYGX(const texture<T, 3, cudaReadModeElementType> texref, float x, float y, float z)
+{
+    float pz = floor(z);
+    float fz = z - pz;
+    return cubicFilter<R>(fz,
+                          tex3DBicubicXY_GYGX<T,R>(texref,x,y,pz-1),
+                          tex3DBicubicXY_GYGX<T,R>(texref,x,y,pz),
+                          tex3DBicubicXY_GYGX<T,R>(texref,x,y,pz+1),
+                          tex3DBicubicXY_GYGX<T,R>(texref,x,y,pz+2)
+                          );
+}
+
+//derivative through X, then through Z
+template<class T, class R>
+__device__
+R tex3DBicubic_GZGX(const texture<T, 3, cudaReadModeElementType> texref, float x, float y, float z)
+{
+    float pz = floor(z);
+    float fz = z - pz;
+    return cubicFilter_G<R>(fz,
+                          tex3DBicubicXY_GX<T,R>(texref,x,y,pz-1),
+                          tex3DBicubicXY_GX<T,R>(texref,x,y,pz),
+                          tex3DBicubicXY_GX<T,R>(texref,x,y,pz+1),
+                          tex3DBicubicXY_GX<T,R>(texref,x,y,pz+2)
+                          );
+}
+
+//derivative through Y, then through Z
+template<class T, class R>
+__device__
+R tex3DBicubic_GZGY(const texture<T, 3, cudaReadModeElementType> texref, float x, float y, float z)
+{
+    float pz = floor(z);
+    float fz = z - pz;
+    return cubicFilter_G<R>(fz,
+                          tex3DBicubicXY_GY<T,R>(texref,x,y,pz-1),
+                          tex3DBicubicXY_GY<T,R>(texref,x,y,pz),
+                          tex3DBicubicXY_GY<T,R>(texref,x,y,pz+1),
+                          tex3DBicubicXY_GY<T,R>(texref,x,y,pz+2)
+                          );
+}
+
+
 __host__ __device__
 int cu_getIndex2(int i, int j, int s1, int s2)
 {
@@ -298,6 +479,14 @@ double cu_inAlpha(double val, double grad_len, double isoval, double thickness)
     }
 }
 
+__device__
+double cu_inAlphaX(double dis, double thickness)
+{
+    if (dis<0)
+        return 1.0;
+    return max(0.0,min(1.0,1.4-fabs(dis)/thickness));
+}
+
 __host__ __device__
 void normalize(double *a, int s)
 {
@@ -314,6 +503,40 @@ double diss2P(double x1,double y1,double z1,double x2,double y2,double z2)
     double dis3 = z2-z1;
     return (dis1*dis1+dis2*dis2+dis3*dis3);
 }
+
+__host__ __device__
+void mulMat3(double* X, double* Y, double* Z)
+{
+    for (int i=0; i<3; i++)
+        for (int j=0; j<3; j++)
+        {
+            for (int k=0; k<3; k++)
+            {
+                Z[cu_getIndex2(i,j,3,3)] += (X[cu_getIndex2(i,k,3,3)]*Y[cu_getIndex2(k,j,3,3)]);
+            }
+        }
+}
+
+__host__ __device__
+void invertMat33(double X[][3], double Y[][3])
+{
+    double det = X[0][0]* (X[1][1]* X[2][2]- X[2][1]* X[1][2])-
+        X[0][1]* (X[1][0]* X[2][2]- X[1][2]* X[2][0])+
+        X[0][2]* (X[1][0]* X[2][1]- X[1][1]* X[2][0]);
+
+    double invdet = 1 / det;
+
+    Y[0][0]= (X[1][1]* X[2][2]- X[2][1]* X[1][2]) * invdet;
+    Y[0][1]= (X[0][2]* X[2][1]- X[0][1]* X[2][2]) * invdet;
+    Y[0][2]= (X[0][1]* X[1][2]- X[0][2]* X[1][1])* invdet;
+    Y[1][0]= (X[1][2]* X[2][0]- X[1][0]* X[2][2])* invdet;
+    Y[1][1]= (X[0][0]* X[2][2]- X[0][2]* X[2][0])* invdet;
+    Y[1][2]= (X[1][0]* X[0][2]- X[0][0]* X[1][2])* invdet;
+    Y[2][0]= (X[1][0]* X[2][1]- X[2][0]* X[1][1])* invdet;
+    Y[2][1]= (X[2][0]* X[0][1]- X[0][0]* X[2][1])* invdet;
+    Y[2][2]= (X[0][0]* X[1][1]- X[1][0]* X[0][1]) * invdet;
+}
+
 
 __global__
 void kernel(int* dim, int *size, double hor_extent, double ver_extent, int channel, int pixSize, double *center, double *viewdir, double *right, double *up, double *light_dir,
@@ -408,6 +631,154 @@ void kernel(int* dim, int *size, double hor_extent, double ver_extent, int chann
     }
     imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = accAlpha;    
 }
+
+__global__
+void kernel_peak(int* dim, int *size, double hor_extent, double ver_extent, int channel, int pixSize, double *center, double *viewdir, double *right, double *up, double *light_dir,
+        double nc, double fc, double raystep, double refstep, double* mat_trans, double* mat_trans_inv, double* MT_BE_inv, double* M_BE_inv, double phongKa, double phongKd, double isoval, double alphamax, double thickness,
+        int nOutChannel, double* imageDouble
+        )
+{
+    int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int j = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    if ((i>=size[0]) || (j>=size[1]))
+        return;
+
+    double hor_ratio = hor_extent/size[0];
+    double ver_ratio = ver_extent/size[1];
+    int ni = i-size[0]/2;
+    int nj = size[1]/2 - j;
+
+    double startPoint1[4];
+    startPoint1[3] = 1;
+    advancePoint(center,right,ni*ver_ratio,startPoint1);
+    double startPoint2[4];
+    startPoint2[3] = 1;
+    advancePoint(startPoint1,up,nj*hor_ratio,startPoint2);
+
+    memcpy(startPoint1,startPoint2,4*sizeof(double));
+
+    double accColor = 0;
+    double transp = 1;    
+    double indPoint[4];
+    double val;
+    double gradi[3];
+    double gradw[3];
+    double gradgfpi[3];
+    double gradgfpw[3];
+    double gradw_len;
+    //double gradi_len;
+    double depth;
+    double pointColor;
+    double alpha;
+    double mipVal = -1;
+    double valgfp;
+    double hessian[9];
+    double hessian_w[9];
+    double hessian_w33[3][3];
+    double hessian_w33inv[3][3];
+    double hessian_winv[9];
+    double peakdis[3];
+    double len_peakdis;
+    double pointColorGFP;
+    double alphaGFP;
+    double transpGFP = 1;
+    double accColorGFP = 0;
+
+    for (double k=0; k<fc-nc; k+=raystep)
+  {
+        advancePoint(startPoint1,viewdir,raystep,startPoint2);
+
+        cu_mulMatPoint(mat_trans_inv,startPoint1,indPoint);
+        if (cu_isInsideDouble(indPoint[0],indPoint[1],indPoint[2],dim[1],dim[2],dim[3]))
+    {
+
+            val = tex3DBicubic<float,float>(tex1,indPoint[0],indPoint[1],indPoint[2]);
+            
+            gradi[0] = tex3DBicubic_GX<float,float>(tex1,indPoint[0],indPoint[1],indPoint[2]);
+            gradi[1] = tex3DBicubic_GY<float,float>(tex1,indPoint[0],indPoint[1],indPoint[2]);
+            gradi[2] = tex3DBicubic_GZ<float,float>(tex1,indPoint[0],indPoint[1],indPoint[2]);
+
+            cu_mulMatPoint3(MT_BE_inv, gradi, gradw);
+            gradw_len = lenVec(gradw,3);
+
+            //negating and normalizing
+            for (int l=0; l<3; l++)
+                gradw[l] = -gradw[l]/gradw_len;
+
+            depth = (k*1.0+1)/(fc*1.0-nc);
+
+            pointColor = phongKa + depth*phongKd*max(0.0f,dotProduct(gradw,light_dir,3));
+            alpha = cu_computeAlpha(val, gradw_len, isoval, alphamax, thickness);
+            alpha = 1 - pow(1-alpha,raystep/refstep);
+            transp *= (1-alpha);
+            accColor = accColor*(1-alpha) + pointColor*alpha;
+
+            valgfp = tex3DBicubic<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
+
+            mipVal = max(mipVal,valgfp*cu_inAlpha(val,gradw_len,isoval,thickness));
+
+            if (alpha>0)
+            {
+                hessian[cu_getIndex2(0,0,3,3)]=tex3DBicubic_GGX<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
+                hessian[cu_getIndex2(0,1,3,3)]=tex3DBicubic_GYGX<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
+                hessian[cu_getIndex2(0,2,3,3)]=tex3DBicubic_GZGX<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
+                hessian[cu_getIndex2(1,1,3,3)]=tex3DBicubic_GGY<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
+                hessian[cu_getIndex2(1,2,3,3)]=tex3DBicubic_GZGY<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
+                hessian[cu_getIndex2(2,2,3,3)]=tex3DBicubic_GGZ<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
+
+                hessian[cu_getIndex2(1,0,3,3)] = hessian[cu_getIndex2(0,1,3,3)];
+                hessian[cu_getIndex2(2,0,3,3)] = hessian[cu_getIndex2(0,2,3,3)];
+                hessian[cu_getIndex2(2,1,3,3)] = hessian[cu_getIndex2(1,2,3,3)];
+
+                double mattmp[9];
+                memset(mattmp,0,9*sizeof(double));
+                mulMat3(hessian,M_BE_inv,mattmp);
+                mulMat3(MT_BE_inv,mattmp,hessian_w);
+
+                memcpy(hessian_w33,hessian_w,sizeof(double)*9);
+                invertMat33(hessian_w33,hessian_w33inv);
+                memcpy(hessian_winv,hessian_w33inv,sizeof(double)*9);
+
+                gradgfpi[0] = tex3DBicubic_GX<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
+                gradgfpi[1] = tex3DBicubic_GY<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
+                gradgfpi[2] = tex3DBicubic_GZ<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
+                cu_mulMatPoint3(MT_BE_inv, gradgfpi, gradgfpw);
+
+                cu_mulMatPoint3(hessian_winv,gradgfpw,peakdis);
+                len_peakdis = lenVec(peakdis,3);
+                pointColorGFP = phongKa + depth*phongKd*max(0.0f,dotProduct(gradgfpw,light_dir,3));
+                alphaGFP = cu_inAlphaX(len_peakdis-19,thickness);//cu_computeAlpha(val, gradw_len, isoval, alphamax, thickness);
+                alphaGFP = 1 - pow(1-alphaGFP,raystep/refstep);
+                transpGFP *= (1-alphaGFP);
+                accColorGFP = accColorGFP*(1-alphaGFP) + pointColorGFP*alphaGFP;
+            }
+    }
+
+        memcpy(startPoint1,startPoint2,4*sizeof(double));
+  }
+    
+    double accAlpha = 1 - transp;
+    
+    if (accAlpha>0)
+    {        
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = accColor/accAlpha;
+        //imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = mipVal;
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = accColorGFP;
+        //imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = 0;
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = 0;
+    }
+    else
+    {        
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = accColor;
+        //imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = mipVal;
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = accColorGFP;
+        //imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = 0;
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = 0;        
+    }
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = accAlpha;    
+}
+
 
 __global__
 void kernel_combined(int* dim, int *size, double hor_extent, double ver_extent, int channel, int pixSize, double *center, double *viewdir, double *right, double *up, double *light_dir,
@@ -599,25 +970,6 @@ void invertMat44(double X[][4], double Y[][4])
             Y[i][j] = Y[i][j]/det;
 }
 
-void invertMat33(double X[][3], double Y[][3])
-{
-    double det = X[0][0]* (X[1][1]* X[2][2]- X[2][1]* X[1][2])-
-        X[0][1]* (X[1][0]* X[2][2]- X[1][2]* X[2][0])+
-        X[0][2]* (X[1][0]* X[2][1]- X[1][1]* X[2][0]);
-
-    double invdet = 1 / det;
-
-    Y[0][0]= (X[1][1]* X[2][2]- X[2][1]* X[1][2]) * invdet;
-    Y[0][1]= (X[0][2]* X[2][1]- X[0][1]* X[2][2]) * invdet;
-    Y[0][2]= (X[0][1]* X[1][2]- X[0][2]* X[1][1])* invdet;
-    Y[1][0]= (X[1][2]* X[2][0]- X[1][0]* X[2][2])* invdet;
-    Y[1][1]= (X[0][0]* X[2][2]- X[0][2]* X[2][0])* invdet;
-    Y[1][2]= (X[1][0]* X[0][2]- X[0][0]* X[1][2])* invdet;
-    Y[2][0]= (X[1][0]* X[2][1]- X[2][0]* X[1][1])* invdet;
-    Y[2][1]= (X[2][0]* X[0][1]- X[0][0]* X[2][1])* invdet;
-    Y[2][2]= (X[0][0]* X[1][1]- X[1][0]* X[0][1]) * invdet;
-}
-
 void subtractVec(double *a, double *b, double *c, int s)
 {
     for (int i=0; i<s; i++)
@@ -656,9 +1008,9 @@ unsigned char quantizeDouble(double val, double minVal, double maxVal)
 void quantizeImageDouble3D(double *input, unsigned char *output, int s0, int s1, int s2)
 {
     double maxVal[4];
-    maxVal[0] = maxVal[1] = maxVal[2] = -(1<<15);
+    maxVal[0] = maxVal[1] = maxVal[2] = maxVal[3] = -(1<<15);
     double minVal[4];
-    minVal[0] = minVal[1] = minVal[2] = ((1<<15) - 1);
+    minVal[0] = minVal[1] = minVal[2] = minVal[3] = ((1<<15) - 1);
 
     for (int i=0; i<s2; i++)
         for (int j=0; j<s1; j++)
@@ -697,6 +1049,16 @@ void removeChannel(unsigned char *input, int s0, int s1, int s2, int chan, unsig
                 output[i*s1*s0+j*s0+chan] = 0;            
 }
 //---end of cuda_volume_rendering functions
+
+void transposeMat33(double X[][3], double Y[][3])
+{
+    for (int i=0; i<3; i++)
+        for (int j=i; j<3; j++)
+        {
+            Y[i][j]=X[j][i];
+            Y[j][i]=X[i][j];
+        }
+}
 
 void render(Hale::Viewer *viewer){
   viewer->draw();
@@ -940,6 +1302,8 @@ main(int argc, const char **argv) {
 
     double MT_BE_inv[3][3];
     invertMat33(MT_BE,MT_BE_inv);
+    double M_BE_inv[3][3];
+    transposeMat33(MT_BE_inv,M_BE_inv);
 
     //tex3D stuff
     const cudaExtent volumeSize = make_cudaExtent(dim[1], dim[2], dim[3]);
@@ -1052,6 +1416,10 @@ main(int argc, const char **argv) {
     cudaMalloc(&d_MT_BE_inv,9*sizeof(double));
     cudaMemcpy(d_MT_BE_inv,&MT_BE_inv[0][0],9*sizeof(double), cudaMemcpyHostToDevice);
 
+    double* d_M_BE_inv;
+    cudaMalloc(&d_M_BE_inv,9*sizeof(double));
+    cudaMemcpy(d_M_BE_inv,&M_BE_inv[0][0],9*sizeof(double), cudaMemcpyHostToDevice);
+
     double* d_mat_trans_inv;
     cudaMalloc(&d_mat_trans_inv,16*sizeof(double));
     cudaMemcpy(d_mat_trans_inv,&mat_trans_inv[0][0],16*sizeof(double), cudaMemcpyHostToDevice);
@@ -1064,13 +1432,20 @@ main(int argc, const char **argv) {
                                           d_center, d_viewdir, d_right, d_up, d_light_dir, nc, fc, raystep, refstep, d_mat_trans,
                                           d_mat_trans_inv, d_MT_BE_inv, phongKa, phongKd, isoval, alphamax, thickness, nOutChannel, d_imageDouble                                          
                                           );
- */
+*/ 
 
+    kernel_peak<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, hor_extent, ver_extent, channel, pixSize,
+                                          d_center, d_viewdir, d_right, d_up, d_light_dir, nc, fc, raystep, refstep, d_mat_trans,
+                                          d_mat_trans_inv, d_MT_BE_inv, d_M_BE_inv, phongKa, phongKd, isoval, alphamax, thickness, nOutChannel, d_imageDouble                                          
+                                          );
+
+/*
     kernel_combined<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, hor_extent, ver_extent, channel, pixSize,
                                           d_center, d_viewdir, d_right, d_up, d_light_dir, nc, fc, raystep, refstep, d_mat_trans,
                                           d_mat_trans_inv, d_MT_BE_inv, phongKa, phongKd, isoval, alphamax, thickness, 
                                           track[0],track[1],track[2],radius,nOutChannel, d_imageDouble, d_imageMask                        
                                           );
+*/
 
     cudaError_t errCu = cudaGetLastError();
     if (errCu != cudaSuccess) 

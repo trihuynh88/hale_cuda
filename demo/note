@@ -1,5 +1,8 @@
 //compiling cuda+c11 code
 nvcc -std=c++11 -I/home/trihuynh/hale-install/include -I/home/trihuynh/Desktop/Research/softwares/teem-install/include -I/usr/local/include/glm/ tex_volume.cu -o tex_volume  -L/home/trihuynh/hale-install/lib -L/home/trihuynh/Desktop/Research/softwares/teem-install/lib -L/usr/local/include/glm/ -lglfw3 -lGL -lm -ldl -lXinerama -lXrandr -lXi -lXcursor -lX11 -lXxf86vm -lpthread -lhale -lteem -lpng -lz -lbz2 -lGL -lX11 -lXxf86vm -lXrandr -lpthread -lXi
 
+//with Image.cpp
+nvcc -std=c++11 -I/home/trihuynh/hale-install/include -I/home/trihuynh/Desktop/Research/softwares/teem-install/include -I/usr/local/include/glm/ tex_volume.cu lib/Image.cpp -o tex_volume  -L/home/trihuynh/hale-install/lib -L/home/trihuynh/Desktop/Research/softwares/teem-install/lib -L/usr/local/include/glm/ -lglfw3 -lGL -lm -ldl -lXinerama -lXrandr -lXi -lXcursor -lX11 -lXxf86vm -lpthread -lhale -lteem -lpng -lz -lbz2 -lGL -lX11 -lXxf86vm -lXrandr -lpthread -lXi
+
 //running the program
 ./tex_volume -i 270.nrrd -fr 2453.95 1850.87 4520.28 -at 2575.22 2259.17 461.956 -up -0.996969 0.0745429 -0.0222908 -nc -400 -fc 400 -fov 18 -isize 726 528 -ldir -1 -1 -2 -step 1.5 -iso 1800 -thick 0.5

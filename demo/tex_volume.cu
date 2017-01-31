@@ -1031,6 +1031,33 @@ void quantizeImageDouble3D(double *input, unsigned char *output, int s0, int s1,
             }
 }
 
+template<class T>
+void quantizeImage3D(T *input, unsigned char *output, int s0, int s1, int s2)
+{
+    double maxVal[4];
+    maxVal[0] = maxVal[1] = maxVal[2] = maxVal[3] = -(1<<15);
+    double minVal[4];
+    minVal[0] = minVal[1] = minVal[2] = minVal[3] = ((1<<15) - 1);
+
+    for (int i=0; i<s2; i++)
+        for (int j=0; j<s1; j++)
+            for (int k=0; k<s0; k++)
+            {
+                if (input[i*s1*s0+j*s0+k]>maxVal[k])
+                    maxVal[k] = input[i*s1*s0+j*s0+k];
+                if (input[i*s1*s0+j*s0+k]<minVal[k])
+                    minVal[k] = input[i*s1*s0+j*s0+k];
+            }
+    for (int i=0; i<4; i++)
+        printf("minmax %d = [%f,%f]\n",i,minVal[i],maxVal[i]);
+    for (int i=0; i<s2; i++)
+        for (int j=0; j<s1; j++)
+            for (int k=0; k<s0; k++)
+            {
+                output[i*s1*s0+j*s0+k] = quantizeDouble(input[i*s1*s0+j*s0+k],minVal[k],maxVal[k]);
+            }
+}
+
 void applyMask(unsigned char *input, int s0, int s1, int s2, int *mask, unsigned char *output)
 {
     for (int i=0; i<s2; i++)
@@ -1058,6 +1085,44 @@ void transposeMat33(double X[][3], double Y[][3])
             Y[i][j]=X[j][i];
             Y[j][i]=X[i][j];
         }
+}
+
+float linearizeDepth(float depth, float zNear, float zFar)
+{
+    return (2.0 * zNear) / (zFar + zNear - depth * (zFar - zNear));
+}
+
+template<class T>
+void saveImage(int width, int height, int nchan, T *data, char *name)
+{
+    TGAImage *img = new TGAImage(width,height);
+    
+    unsigned char* dataQuantized = new unsigned char[height*width*nchan];
+    quantizeImage3D<T>(data,dataQuantized,nchan,width,height);
+
+    Colour c;    
+    for(int x=0; x<height; x++)
+        for(int y=0; y<width; y++)
+        {
+            c.a = 255;
+            c.b = c.g = c.r = 0;
+            switch (nchan)
+            {
+              case 4:
+                c.a = dataQuantized[x*width*nchan+y*nchan+3];
+              case 3:
+                c.b = dataQuantized[x*width*nchan+y*nchan+2];
+              case 2:
+                c.g = dataQuantized[x*width*nchan+y*nchan+1];
+              case 1:
+                c.r = dataQuantized[x*width*nchan+y*nchan];
+            }                                        
+            img->setPixel(c,x,y);
+        }
+    
+    img->WriteImage(name);  
+    delete img;
+    delete[] dataQuantized;
 }
 
 void render(Hale::Viewer *viewer){
@@ -1522,7 +1587,7 @@ main(int argc, const char **argv) {
   viewer2.current();
 */
   
-  /*
+  
   limnPolyData *lpld2 = limnPolyDataNew();
   limnPolyDataSquare(lpld2, 1 << limnPolyDataInfoNorm);
 
@@ -1537,6 +1602,7 @@ main(int argc, const char **argv) {
   mmat[3][0] = trackw[0];
   mmat[3][1] = trackw[1];
   mmat[3][2] = trackw[2];
+  printf("Tracked Point world-space coordinates: %f %f %f\n",trackw[0],trackw[1],trackw[2]);
   hpld2.model(mmat);
   scene.remove(&hpld);
   scene.add(&hpld2);
@@ -1552,24 +1618,27 @@ main(int argc, const char **argv) {
   
 
   GLfloat* zbuffer = new GLfloat[size[0]*size[1]];
-  glReadPixels(0,0,size[0],size[1],GL_DEPTH_COMPONENT,GL_FLOAT,zbuffer);
+  glReadPixels(0,0,size[0],size[1],GL_DEPTH_COMPONENT,GL_FLOAT,zbuffer);  
   printf("Z-buffer\n");
+
   float minz=1000,maxz=-1000;
   for (int i=0; i<size[0]*size[1]; i++)
   {
+    zbuffer[i] = linearizeDepth(zbuffer[i],nc,fc);
     if (zbuffer[i]<minz)
         minz = zbuffer[i];
     if (zbuffer[i]>maxz)
         maxz = zbuffer[i];
   }
   printf("minmaxz = (%f,%f)\n",minz,maxz );
+  saveImage<GLfloat>(size[0],size[1],1,zbuffer,"depth.tga");
     //printf("%f ", zbuffer[i]);
   //viewer.bufferSwap();
 
-  return 0;
+  //return 0;
 
-  int count=0;
-  */
+  //int count=0;
+  
 
   glm::vec3 preFrom = viewer.camera.from();
   glm::vec3 preAt = viewer.camera.at();

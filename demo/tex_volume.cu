@@ -1087,10 +1087,24 @@ void transposeMat33(double X[][3], double Y[][3])
         }
 }
 
+
+float lerp(float y0, float y1, float x0, float x, float x1)
+{
+  float alpha = (x-x0)/(x1-x0);
+  return y0*(1-alpha)+alpha*y1;
+}
+
 float linearizeDepth(float depth, float zNear, float zFar)
 {
-    return (2.0 * zNear) / (zFar + zNear - depth * (zFar - zNear));
+    return (2.0 * zFar * zNear) / (zFar + zNear - depth * (zFar - zNear));
 }
+
+float linearizeDepthOrtho(float depth, float zNear, float zFar)
+{
+    return (depth*(zFar-zNear)+zFar+zNear)/2;
+}
+
+
 
 template<class T>
 void saveImage(int width, int height, int nchan, T *data, char *name)
@@ -1624,7 +1638,7 @@ main(int argc, const char **argv) {
   float minz=1000,maxz=-1000;
   for (int i=0; i<size[0]*size[1]; i++)
   {
-    zbuffer[i] = linearizeDepth(zbuffer[i],nc,fc);
+    zbuffer[i] = linearizeDepthOrtho(lerp(-1,1,0,zbuffer[i],1),nc,fc);
     if (zbuffer[i]<minz)
         minz = zbuffer[i];
     if (zbuffer[i]>maxz)
@@ -1635,7 +1649,7 @@ main(int argc, const char **argv) {
     //printf("%f ", zbuffer[i]);
   //viewer.bufferSwap();
 
-  //return 0;
+  return 0;
 
   //int count=0;
   

@@ -410,6 +410,20 @@ double lenVec(double *a, int s)
     return len;
 }
 
+__host__ __device__
+void addVector(double *a, double *b, double *c, int len)
+{
+  for (int i=0; i<len; i++)
+    c[i] = a[i]+b[i];
+}
+
+__host__ __device__
+void scaleVector(double *a, int len, double scale)
+{
+  for (int i=0; i<len; i++)
+    a[i]*=scale;
+}
+
 void mulMatPoint(double X[4][4], double Y[4], double Z[4])
 {
     for (int i=0; i<4; i++)
@@ -773,6 +787,7 @@ void kernel_peak(int* dim, int *size, double hor_extent, double ver_extent, int 
                 */
                 computeHessian(hessian,indPoint);
 
+                /*
                 double mattmp[9];
                 memset(mattmp,0,9*sizeof(double));
                 mulMat3(hessian,M_BE_inv,mattmp);
@@ -781,19 +796,37 @@ void kernel_peak(int* dim, int *size, double hor_extent, double ver_extent, int 
                 memcpy(hessian_w33,hessian_w,sizeof(double)*9);
                 invertMat33(hessian_w33,hessian_w33inv);
                 memcpy(hessian_winv,hessian_w33inv,sizeof(double)*9);
+                */
 
                 gradgfpi[0] = tex3DBicubic_GX<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
                 gradgfpi[1] = tex3DBicubic_GY<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
                 gradgfpi[2] = tex3DBicubic_GZ<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
                 cu_mulMatPoint3(MT_BE_inv, gradgfpi, gradgfpw);
-
-                cu_mulMatPoint3(hessian_winv,gradgfpw,peakdis);
+                
+                double hessian_inv[9];
+                memcpy(hessian_w33,hessian,sizeof(double)*9);
+                invertMat33(hessian_w33,hessian_w33inv);
+                memcpy(hessian_inv,hessian_w33inv,sizeof(double)*9);
+                
+                //cu_mulMatPoint3(hessian_winv,gradgfpw,peakdis);
+                cu_mulMatPoint3(hessian_inv,gradgfpi,peakdis);
+                scaleVector(peakdis,3,-1);
                 len_peakdis = lenVec(peakdis,3);
-                pointColorGFP = phongKa + depth*phongKd*max(0.0f,dotProduct(gradgfpw,light_dir,3));
-                alphaGFP = cu_inAlphaX(len_peakdis-19,thickness);//cu_computeAlpha(val, gradw_len, isoval, alphamax, thickness);
-                alphaGFP = 1 - pow(1-alphaGFP,raystep/refstep);
-                transpGFP *= (1-alphaGFP);
-                accColorGFP = accColorGFP*(1-alphaGFP) + pointColorGFP*alphaGFP;
+                double critpoint[3];
+                addVector(indPoint,peakdis,critpoint,3);
+
+                //see if it is maximum point
+                computeHessian(hessian,critpoint);
+                double eigenval[3];
+                eigenOfHess(hessian,eigenval);
+                if (eigenval[0]<0 && eigenval[1]<0 && eigenval[2]<0)
+                {                
+                  pointColorGFP = phongKa + depth*phongKd*max(0.0f,dotProduct(gradgfpw,light_dir,3));
+                  alphaGFP = cu_inAlphaX(len_peakdis-19,thickness);//cu_computeAlpha(val, gradw_len, isoval, alphamax, thickness);
+                  alphaGFP = 1 - pow(1-alphaGFP,raystep/refstep);
+                  transpGFP *= (1-alphaGFP);
+                  accColorGFP = accColorGFP*(1-alphaGFP) + pointColorGFP*alphaGFP;
+                }
             }
     }
 
@@ -801,23 +834,26 @@ void kernel_peak(int* dim, int *size, double hor_extent, double ver_extent, int 
   }
     
     double accAlpha = 1 - transp;
+    double accAlphaGFP = 1 - transpGFP;
     
     if (accAlpha>0)
     {        
         imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = accColor/accAlpha;
-        //imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = mipVal;
-        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = accColorGFP;
-        //imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = 0;
-        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = 0;
     }
     else
-    {        
+    {
         imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = accColor;
-        //imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = mipVal;
-        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = accColorGFP;
-        //imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = 0;
-        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = 0;        
     }
+    if (accAlphaGFP>0)
+    {
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = accColorGFP/accAlphaGFP;
+    }
+    else
+    {
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = accColorGFP;  
+    }
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = 0;
+        
     imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = accAlpha;    
 }
 

@@ -537,6 +537,45 @@ void invertMat33(double X[][3], double Y[][3])
     Y[2][2]= (X[0][0]* X[1][1]- X[1][0]* X[0][1]) * invdet;
 }
 
+__device__
+void eigenOfHess(double* hessian, double *eigval)
+{
+  double Dxx = hessian[cu_getIndex2(0,0,3,3)];
+  double Dyy = hessian[cu_getIndex2(1,1,3,3)];
+  double Dzz = hessian[cu_getIndex2(2,2,3,3)];
+  double Dxy = hessian[cu_getIndex2(0,1,3,3)];
+  double Dxz = hessian[cu_getIndex2(0,2,3,3)];
+  double Dyz = hessian[cu_getIndex2(1,2,3,3)];
+
+  double J1 = Dxx + Dyy + Dzz;
+  double J2 = Dxx*Dyy + Dxx*Dzz + Dyy*Dzz - Dxy*Dxy - Dxz*Dxz - Dyz*Dyz;
+  double J3 = 2*Dxy*Dxz*Dyz + Dxx*Dyy*Dzz - Dxz*Dxz*Dyy - Dxx*Dyz*Dyz - Dxy*Dxy*Dzz;
+  double Q = (J1*J1-3*J2)/9;
+  double R = (-9*J1*J2+27*J3+2*J1*J1*J1)/54;
+  double theta = (1.0/3.0)*acos(R/sqrt(Q*Q*Q));
+  double sqrtQ = sqrt(Q);
+  double twosqrtQ = 2*sqrtQ;
+  double J1o3 = J1/3;
+  eigval[0] = J1o3 + twosqrtQ*cos(theta);
+  eigval[1] = J1o3 + twosqrtQ*cos(theta-2*M_PI/3);
+  eigval[2] = J1o3 + twosqrtQ*cos(theta+2*M_PI/3);
+}
+
+__device__
+void computeHessian(double *hessian, double *p)
+{
+  hessian[cu_getIndex2(0,0,3,3)]=tex3DBicubic_GGX<float,float>(tex0,p[0],p[1],p[2]);
+  hessian[cu_getIndex2(0,1,3,3)]=tex3DBicubic_GYGX<float,float>(tex0,p[0],p[1],p[2]);
+  hessian[cu_getIndex2(0,2,3,3)]=tex3DBicubic_GZGX<float,float>(tex0,p[0],p[1],p[2]);
+  hessian[cu_getIndex2(1,1,3,3)]=tex3DBicubic_GGY<float,float>(tex0,p[0],p[1],p[2]);
+  hessian[cu_getIndex2(1,2,3,3)]=tex3DBicubic_GZGY<float,float>(tex0,p[0],p[1],p[2]);
+  hessian[cu_getIndex2(2,2,3,3)]=tex3DBicubic_GGZ<float,float>(tex0,p[0],p[1],p[2]);
+
+  hessian[cu_getIndex2(1,0,3,3)] = hessian[cu_getIndex2(0,1,3,3)];
+  hessian[cu_getIndex2(2,0,3,3)] = hessian[cu_getIndex2(0,2,3,3)];
+  hessian[cu_getIndex2(2,1,3,3)] = hessian[cu_getIndex2(1,2,3,3)];  
+}
+
 
 __global__
 void kernel(int* dim, int *size, double hor_extent, double ver_extent, int channel, int pixSize, double *center, double *viewdir, double *right, double *up, double *light_dir,
@@ -720,6 +759,7 @@ void kernel_peak(int* dim, int *size, double hor_extent, double ver_extent, int 
 
             if (alpha>0)
             {
+              /*
                 hessian[cu_getIndex2(0,0,3,3)]=tex3DBicubic_GGX<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
                 hessian[cu_getIndex2(0,1,3,3)]=tex3DBicubic_GYGX<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
                 hessian[cu_getIndex2(0,2,3,3)]=tex3DBicubic_GZGX<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
@@ -730,6 +770,8 @@ void kernel_peak(int* dim, int *size, double hor_extent, double ver_extent, int 
                 hessian[cu_getIndex2(1,0,3,3)] = hessian[cu_getIndex2(0,1,3,3)];
                 hessian[cu_getIndex2(2,0,3,3)] = hessian[cu_getIndex2(0,2,3,3)];
                 hessian[cu_getIndex2(2,1,3,3)] = hessian[cu_getIndex2(1,2,3,3)];
+                */
+                computeHessian(hessian,indPoint);
 
                 double mattmp[9];
                 memset(mattmp,0,9*sizeof(double));
@@ -1077,6 +1119,14 @@ void removeChannel(unsigned char *input, int s0, int s1, int s2, int chan, unsig
 }
 //---end of cuda_volume_rendering functions
 
+template<class T>
+void setPlane(T* image, int s1, int s2, int s3, T val, int s1i)
+{
+  for (int i=0; i<s3; i++)
+    for (int j=0; j<s2; j++)
+      image[i*s2*s1+j*s1+s1i] = val;
+}
+
 void transposeMat33(double X[][3], double Y[][3])
 {
     for (int i=0; i<3; i++)
@@ -1111,6 +1161,7 @@ void saveImage(int width, int height, int nchan, T *data, char *name)
 {
     TGAImage *img = new TGAImage(width,height);
     
+
     unsigned char* dataQuantized = new unsigned char[height*width*nchan];
     quantizeImage3D<T>(data,dataQuantized,nchan,width,height);
 
@@ -1137,6 +1188,35 @@ void saveImage(int width, int height, int nchan, T *data, char *name)
     img->WriteImage(name);  
     delete img;
     delete[] dataQuantized;
+}
+
+template<class T>
+void saveImageWithoutQuantizing(int width, int height, int nchan, T *data, char *name)
+{
+    TGAImage *img = new TGAImage(width,height);
+    
+    Colour c;    
+    for(int x=0; x<height; x++)
+        for(int y=0; y<width; y++)
+        {
+            c.a = 255;
+            c.b = c.g = c.r = 0;
+            switch (nchan)
+            {
+              case 4:
+                c.a = data[x*width*nchan+y*nchan+3];
+              case 3:
+                c.b = data[x*width*nchan+y*nchan+2];
+              case 2:
+                c.g = data[x*width*nchan+y*nchan+1];
+              case 1:
+                c.r = data[x*width*nchan+y*nchan];
+            }                                        
+            img->setPixel(c,x,y);
+        }
+    
+    img->WriteImage(name);  
+    delete img;
 }
 
 void render(Hale::Viewer *viewer){
@@ -1511,7 +1591,7 @@ main(int argc, const char **argv) {
                                           d_center, d_viewdir, d_right, d_up, d_light_dir, nc, fc, raystep, refstep, d_mat_trans,
                                           d_mat_trans_inv, d_MT_BE_inv, phongKa, phongKd, isoval, alphamax, thickness, nOutChannel, d_imageDouble                                          
                                           );
-*/ 
+ */
 
     kernel_peak<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, hor_extent, ver_extent, channel, pixSize,
                                           d_center, d_viewdir, d_right, d_up, d_light_dir, nc, fc, raystep, refstep, d_mat_trans,
@@ -1545,10 +1625,13 @@ main(int argc, const char **argv) {
     unsigned char *imageQuantizedMask = new unsigned char[size[0]*size[1]*4];
     unsigned char *imageQuantizedNoB = new unsigned char[size[0]*size[1]*4];
     unsigned char *imageQuantizedMaskNoB = new unsigned char[size[0]*size[1]*4];
+    unsigned char *imageQuantizedGreen = new unsigned char[size[0]*size[1]*4];
     quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);
     applyMask(imageQuantized,4,size[0],size[1],imageMask,imageQuantizedMask);
     removeChannel(imageQuantized,4,size[0],size[1],2,imageQuantizedNoB);
     removeChannel(imageQuantizedMask,4,size[0],size[1],2,imageQuantizedMaskNoB);
+    removeChannel(imageQuantizedNoB,4,size[0],size[1],0,imageQuantizedGreen);
+    setPlane<unsigned char>(imageQuantizedGreen, 4, size[0], size[1], 255, 3);
 //end of cuda_rendering
 
   limnPolyData *lpld = limnPolyDataNew();
@@ -1564,6 +1647,8 @@ main(int argc, const char **argv) {
   hpld.setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
   scene.add(&hpld);
 
+  saveImage<unsigned char>(size[0],size[1],4,imageQuantized,"img.tga");
+  saveImageWithoutQuantizing<unsigned char>(size[0],size[1],4,imageQuantizedGreen,"green.tga");
 /*
   limnPolyData *lpld2 = limnPolyDataNew();
   limnPolyDataSquare(lpld2, 1 << limnPolyDataInfoNorm | 1 << limnPolyDataInfoTex2);
@@ -1601,7 +1686,7 @@ main(int argc, const char **argv) {
   viewer2.current();
 */
   
-  
+  /*
   limnPolyData *lpld2 = limnPolyDataNew();
   limnPolyDataSquare(lpld2, 1 << limnPolyDataInfoNorm);
 
@@ -1626,11 +1711,11 @@ main(int argc, const char **argv) {
   glDepthRange(0.0f, 1.0f);
   render(&viewer);
   //viewer.draw();
-  
+  */
   
   //----------------------------
   
-
+/*
   GLfloat* zbuffer = new GLfloat[size[0]*size[1]];
   glReadPixels(0,0,size[0],size[1],GL_DEPTH_COMPONENT,GL_FLOAT,zbuffer);  
   printf("Z-buffer\n");
@@ -1652,7 +1737,7 @@ main(int argc, const char **argv) {
   return 0;
 
   //int count=0;
-  
+  */
 
   glm::vec3 preFrom = viewer.camera.from();
   glm::vec3 preAt = viewer.camera.at();

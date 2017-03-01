@@ -12,6 +12,7 @@
 //from cuda_volume_rendering
 #define PI 3.14159265
 
+#define MAX(a,b) ((a)>(b)?(a):(b))
 
 texture<float, 3, cudaReadModeElementType> tex0;  // 3D texture
 texture<float, 3, cudaReadModeElementType> tex1;  // 3D texture
@@ -590,8 +591,18 @@ void computeHessian(double *hessian, double *p)
   hessian[cu_getIndex2(2,1,3,3)] = hessian[cu_getIndex2(1,2,3,3)];  
 }
 
+__host__ __device__
+void cross(double *u, double *v, double *w)
+{
+    w[0] = u[1]*v[2]-u[2]*v[1];
+    w[1] = u[2]*v[0]-u[0]*v[2];
+    w[2] = u[0]*v[1]-u[1]*v[0];
+}
+
+//currently working in index-space
+//do MIP for a small slice around each point
 __global__
-void kernel_cpr(int* dim, int *size, double *center, double *dir1, double *dir2, int nOutChannel, double* imageDouble
+void kernel_cpr(int* dim, int *size, double *center, double *dir1, double *dir2, double swidth, double sstep, int nOutChannel, double* imageDouble
         )
 {
     int i = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -605,13 +616,50 @@ void kernel_cpr(int* dim, int *size, double *center, double *dir1, double *dir2,
     double pointi[3];
     advancePoint(center,dir1,ni,pointi);
     advancePoint(pointi,dir2,nj,pointi);
-    double val = tex3DBicubic<float,float>(tex0,pointi[0],pointi[1],pointi[2]);    
-    imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = val;
+
+    double mipdir[3];
+    cross(dir1,dir2,mipdir);
+    normalize(mipdir,3);
+
+    double mipval = INT_MIN;
+
+    double curpoint[3];
+    int k;
+    for (k=0; k<3; k++)
+      curpoint[k] = pointi[k] - mipdir[k]*swidth/2;
+
+    for (k=0; k<ceil(swidth/sstep); k++)
+    {
+      double curval;
+      curval = tex3DBicubic<float,float>(tex0,curpoint[0],curpoint[1],curpoint[2]);    
+      mipval = MAX(mipval,curval);
+      curpoint[0] = curpoint[0] + mipdir[0]*sstep;
+      curpoint[1] = curpoint[1] + mipdir[1]*sstep;
+      curpoint[2] = curpoint[2] + mipdir[2]*sstep;
+    }
+
+    //double val = tex3DBicubic<float,float>(tex0,pointi[0],pointi[1],pointi[2]);    
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = mipval;
     for (int k=1; k<nOutChannel-1; k++)
       imageDouble[j*size[0]*nOutChannel+i*nOutChannel+k] = 0;
     imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = 1;   
 }
 
+
+void drawCircle(unsigned char *img, int s0, int s1, int s2, int drawchan, int c1, int c2, double rad)
+{
+  double angstep = 0.2;
+  for (double curang = 0; curang<2*M_PI; curang+=angstep)
+  {
+    int i1, i2;
+    i2 = sin(curang)*rad;
+    i1 = cos(curang)*rad;
+    i1 += c1;
+    i2 += c2;
+
+    img[i2*s1*s0 + i1*s0 + drawchan] = 255;
+  }
+}
 
 double calDet44(double X[][4])
 {
@@ -655,13 +703,6 @@ void subtractVec(double *a, double *b, double *c, int s)
 {
     for (int i=0; i<s; i++)
         c[i] = a[i]-b[i];
-}
-
-void cross(double *u, double *v, double *w)
-{
-    w[0] = u[1]*v[2]-u[2]*v[1];
-    w[1] = u[2]*v[0]-u[0]*v[2];
-    w[2] = u[0]*v[1]-u[1]*v[0];
 }
 
 void negateVec(double *a, int s)
@@ -896,6 +937,7 @@ main(int argc, const char **argv) {
   int size[2];
   Nrrd *nin;
   char *outname;
+  double swidth, sstep; //width and step to take inside the slice
 
   /* boilerplate hest code */
   me = argv[0];
@@ -917,6 +959,12 @@ main(int argc, const char **argv) {
 
   hestOptAdd(&hopt, "dir2", "x y z", airTypeDouble, 3, 3, dir2, "0 -1 0",
              "second direction of the generated image");
+
+  hestOptAdd(&hopt, "swidth", "sw", airTypeDouble, 1, 1, &swidth, "1",
+             "the width of the slice to cut");
+
+  hestOptAdd(&hopt, "sstep", "ss", airTypeDouble, 1, 1, &sstep, "1",
+             "the width of the slice to cut");  
 
   hestOptAdd(&hopt, "center", "x y z", airTypeDouble, 3, 3, center, "366.653991263 89.6381792864 104.736646409",
              "center of the generated image");
@@ -1072,7 +1120,7 @@ main(int argc, const char **argv) {
     dim3 threadsPerBlock(numThread1D,numThread1D);
     dim3 numBlocks((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
-    kernel_cpr<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, d_center, d_dir1, d_dir2, nOutChannel, d_imageDouble);
+    kernel_cpr<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
     cudaError_t errCu = cudaGetLastError();
     if (errCu != cudaSuccess) 
@@ -1088,8 +1136,9 @@ main(int argc, const char **argv) {
     short height = size[1];
 
     unsigned char *imageQuantized = new unsigned char[size[0]*size[1]*4];
-    quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);
+    quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
     setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+    drawCircle(imageQuantized,4,size[0],size[1],1,size[0]/2,size[1]/2,20);
 //end of cuda_rendering
 
   saveImageWithoutQuantizing<unsigned char>(size[0],size[1],4,imageQuantized,outname);

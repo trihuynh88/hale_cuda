@@ -1,3 +1,11 @@
+/*
+ *  Status: this code can do 
+ *          + MIP of GFP inside isosurface bounded by RFP
+ *          + Rendering of peak finding + handling either 1 or 2 channel data, either short or float
+ *
+ *
+ */
+
 #include <iostream>
 #include <Hale.h>
 #include <glm/glm.hpp>
@@ -796,7 +804,7 @@ void kernel_peak(int* dim, int *size, double hor_extent, double ver_extent, int 
             
             mipVal = max(mipVal,valgfp*inalpha);
 
-            if (inalpha>0)
+            if (inalpha>0 && dim[0]>1)
             {
               /*
                 hessian[cu_getIndex2(0,0,3,3)]=tex3DBicubic_GGX<float,float>(tex0,indPoint[0],indPoint[1],indPoint[2]);
@@ -1693,6 +1701,7 @@ main(int argc, const char **argv) {
                                           );
  */
 
+
     kernel_peak<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, hor_extent, ver_extent, channel, pixSize,
                                           d_center, d_viewdir, d_right, d_up, d_light_dir, nc, fc, raystep, refstep, d_mat_trans,
                                           d_mat_trans_inv, d_MT_BE_inv, d_M_BE_inv, phongKa, phongKd, isoval, alphamax, thickness, nOutChannel, d_imageDouble                                          
@@ -1920,12 +1929,17 @@ main(int argc, const char **argv) {
                                               d_mat_trans_inv, d_MT_BE_inv, phongKa, phongKd, isoval, alphamax, thickness, nOutChannel, d_imageDouble                                          
                                               );
 */
+/*
         kernel_combined<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, hor_extent, ver_extent, channel, pixSize,
                                               d_center, d_viewdir, d_right, d_up, d_light_dir, nc, fc, raystep, refstep, d_mat_trans,
                                               d_mat_trans_inv, d_MT_BE_inv, phongKa, phongKd, isoval, alphamax, thickness, 
                                               track[0],track[1],track[2],radius,nOutChannel, d_imageDouble, d_imageMask                        
                                               );
-        
+*/
+        kernel_peak<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, hor_extent, ver_extent, channel, pixSize,
+                                          d_center, d_viewdir, d_right, d_up, d_light_dir, nc, fc, raystep, refstep, d_mat_trans,
+                                          d_mat_trans_inv, d_MT_BE_inv, d_M_BE_inv, phongKa, phongKd, isoval, alphamax, thickness, nOutChannel, d_imageDouble                                          
+                                          );        
         errCu = cudaGetLastError();
         if (errCu != cudaSuccess) 
             printf("Error: %s\n", cudaGetErrorString(errCu));

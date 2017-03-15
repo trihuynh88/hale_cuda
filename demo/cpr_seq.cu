@@ -8,6 +8,9 @@
 #include <cuda_runtime.h>
 #include <cuda.h>
 #include "lib/Image.h"
+#include <vector>
+
+using namespace std;
 
 //from cuda_volume_rendering
 #define PI 3.14159265
@@ -1027,6 +1030,34 @@ main(int argc, const char **argv) {
   infile.close();
   cout<<"Initialized countline = "<<countline<<endl;
 
+  double thresdis = 1;
+  vector<double> vcenter;
+
+  vcenter.push_back(arr_center[0]);
+  vcenter.push_back(arr_center[1]);
+  vcenter.push_back(arr_center[2]);
+
+
+  for (int i=1; i<countline; i++)
+  {
+    int countv = vcenter.size();
+    if (diss2P(vcenter[countv-3],vcenter[countv-2],vcenter[countv-1],arr_center[i*3+0],arr_center[i*3+1],arr_center[i*3+2])<thresdis)
+    {
+      continue;
+    }
+    else
+    {
+      vcenter.push_back(arr_center[i*3+0]);
+      vcenter.push_back(arr_center[i*3+1]);
+      vcenter.push_back(arr_center[i*3+2]);
+      countv = vcenter.size()/3;
+      arr_nameid[countv-1] = arr_nameid[i];
+    }
+  }
+  printf("after correcting input\n");
+  countline = vcenter.size()/3;
+  memcpy(arr_center,vcenter.data(),sizeof(double)*countline*3);
+
   outdata = new short[size[0]*size[1]*countline];
 
   cout<<"Initialized outdata"<<endl;
@@ -1084,12 +1115,20 @@ main(int argc, const char **argv) {
 
   printf("Initialized viewer\n");
 
+  Hale::Program *newprog = new Hale::Program("tex-vert-cpr.glsl","texdemo-frag.glsl");
+  newprog->compile();
+  newprog->bindAttribute(Hale::vertAttrIdxXYZW, "positionVA");
+  newprog->bindAttribute(Hale::vertAttrIdxRGBA, "colorVA");
+  newprog->bindAttribute(Hale::vertAttrIdxNorm, "normalVA");
+  newprog->bindAttribute(Hale::vertAttrIdxTex2, "tex2VA");
+  newprog->link();    
+
   //adding some points outside of the valid convolution range
   int pointind[3];
   pointind[0] = 0;
   pointind[1] = countline-1;
   pointind[2] = countline-2;
-  double spherescale = 1;
+  double spherescale = 0.2;
   for (int i=0; i<3; i++)
   {
     limnPolyData *lpld2 = limnPolyDataNew();
@@ -1124,6 +1163,7 @@ main(int argc, const char **argv) {
     center[0] = arr_center[count*3];
     center[1] = arr_center[count*3+1];
     center[2] = arr_center[count*3+2];
+    
     double FT[3];
     double FN[3],FB[3];
     double dr[3],ddr[3];
@@ -1149,15 +1189,19 @@ main(int argc, const char **argv) {
       dotProduct(FN,FB,3),dotProduct(FN,FT,3),dotProduct(FB,FT,3));
 
     limnPolyData *lpld = limnPolyDataNew();
-    limnPolyDataSquare(lpld, 1 << limnPolyDataInfoNorm);
+    limnPolyDataSquare(lpld, 1 << limnPolyDataInfoNorm | 1 << limnPolyDataInfoTex2);
 
     printf("after initializing lpld\n");
     
+    //Hale::Polydata *hpld = new Hale::Polydata(lpld, true,
+    //                     Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+    //                     "square");
     Hale::Polydata *hpld = new Hale::Polydata(lpld, true,
-                         Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+                         NULL,
                          "square");
-    hpld->colorSolid(lerp(0,1,0,count,countline-1),lerp(1,0,0,count,countline-1),0.5);
-    printf("after setting color for hpld\n");
+    hpld->program(newprog);
+    //hpld->colorSolid(lerp(0,1,0,count,countline-1),lerp(1,0,0,count,countline-1),0.5);
+    //printf("after setting color for hpld\n");
     
     glm::mat4 tmat = glm::mat4();
     
@@ -1185,7 +1229,7 @@ main(int argc, const char **argv) {
 
     hpld->model(fmat);    
 
-    scene.add(hpld);
+
     
 //add a sphere
     limnPolyData *lpld2 = limnPolyDataNew();
@@ -1393,6 +1437,10 @@ main(int argc, const char **argv) {
     unsigned char *imageQuantized = new unsigned char[size[0]*size[1]*4];
     quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
     setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+
+    hpld->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
+    scene.add(hpld);
+    
     drawCircle(imageQuantized,4,size[0],size[1],1,size[0]/2,size[1]/2,20);
 //end of cuda_rendering
 

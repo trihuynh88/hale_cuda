@@ -100,7 +100,7 @@ float w3gg(float a)
 
 // filter 4 values using cubic splines
 template<class T>
-__device__
+__host__ __device__
 T cubicFilter(float x, T c0, T c1, T c2, T c3)
 {
     T r;
@@ -113,7 +113,7 @@ T cubicFilter(float x, T c0, T c1, T c2, T c3)
 
 //filtering with derivative of basic functions
 template<class T>
-__device__
+__host__ __device__
 T cubicFilter_G(float x, T c0, T c1, T c2, T c3)
 {
     T r;
@@ -126,7 +126,7 @@ T cubicFilter_G(float x, T c0, T c1, T c2, T c3)
 
 //filtering with second derivative of basic functions
 template<class T>
-__device__
+__host__ __device__
 T cubicFilter_GG(float x, T c0, T c1, T c2, T c3)
 {
     T r;
@@ -956,6 +956,8 @@ main(int argc, const char **argv) {
   short *outdata;
   char outnameslice[100];
 
+
+
   /* boilerplate hest code */
   me = argv[0];
   mop = airMopNew();
@@ -983,7 +985,7 @@ main(int argc, const char **argv) {
              "the width of the slice to cut");
 
   hestOptAdd(&hopt, "sstep", "ss", airTypeDouble, 1, 1, &sstep, "1",
-             "the width of the slice to cut");  
+             "the step of Maximum Intensity Projection through slice");  
 
   //hestOptAdd(&hopt, "center", "x y z", airTypeDouble, 3, 3, center, "366.653991263 89.6381792864 104.736646409",
   //           "center of the generated image");
@@ -1002,13 +1004,27 @@ main(int argc, const char **argv) {
   int countline = 0;
   string line;
   ifstream infile(centername);
+  int *arr_nameid;
+  double *arr_center;
 
   while (std::getline(infile, line))
-        ++countline;
+  {
+    ++countline;    
+  }
 
   infile.clear();
   infile.seekg(0, ios::beg);
 
+  arr_nameid = new int[countline];
+  arr_center = new double[countline*3];
+  for (int i=0; i<countline; i++)
+  {
+    infile >> arr_nameid[i];
+    infile >> arr_center[i*3];
+    infile >> arr_center[i*3+1];
+    infile >> arr_center[i*3+2];
+  }
+  infile.close();
   cout<<"Initialized countline = "<<countline<<endl;
 
   outdata = new short[size[0]*size[1]*countline];
@@ -1031,10 +1047,174 @@ main(int argc, const char **argv) {
 
   nin = nrrdNew();
 
-  for (count = 0; count<countline; count++)
+  Nrrd *ndblpng = nrrdNew();
+
+  float camfr[3], camat[3], camup[3], camnc, camfc, camFOV;
+  int camortho;
+  unsigned int camsize[2];
+  camfr[0] = arr_center[0];
+  camfr[1] = arr_center[1];
+  camfr[2] = arr_center[2]-50;
+  camat[0] = arr_center[0];
+  camat[1] = arr_center[1];
+  camat[2] = arr_center[2];
+  camup[0] = 1;
+  camup[1] = 0;
+  camup[2] = 0;
+  camnc = -500;
+  camfc = 500;
+  camFOV = 170;
+  camortho = 1;
+  camsize[0] = 500;
+  camsize[1] = 500;
+
+  Hale::init();
+  Hale::Scene scene;
+  /* then create viewer (in order to create the OpenGL context) */
+  Hale::Viewer viewer(camsize[0], camsize[1], "Iso", &scene);
+  viewer.lightDir(glm::vec3(-1.0f, 1.0f, 3.0f));
+  viewer.camera.init(glm::vec3(camfr[0], camfr[1], camfr[2]),
+                     glm::vec3(camat[0], camat[1], camat[2]),
+                     glm::vec3(camup[0], camup[1], camup[2]),
+                     camFOV, (float)camsize[0]/camsize[1],
+                     camnc, camfc, camortho);
+  viewer.refreshCB((Hale::ViewerRefresher)render);
+  viewer.refreshData(&viewer);
+  viewer.current();
+
+  printf("Initialized viewer\n");
+
+  //adding some points outside of the valid convolution range
+  int pointind[3];
+  pointind[0] = 0;
+  pointind[1] = countline-1;
+  pointind[2] = countline-2;
+  double spherescale = 1;
+  for (int i=0; i<3; i++)
   {
-    infile >> curnameind;
-    infile >> center[0] >> center[1] >> center[2];
+    limnPolyData *lpld2 = limnPolyDataNew();
+    limnPolyDataIcoSphere(lpld2, 1 << limnPolyDataInfoNorm, 3);
+
+    Hale::Polydata *hpld2 = new Hale::Polydata(lpld2, true,
+                         Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+                         "IcoSphere");
+    hpld2->colorSolid(lerp(0,1,0,pointind[i],countline-1),lerp(1,0,0,pointind[i],countline-1),0.5);
+    
+    glm::mat4 fmat2 = glm::mat4();
+    
+    fmat2[0][0] = spherescale;
+    fmat2[1][1] = spherescale;
+    fmat2[2][2] = spherescale;
+    fmat2[3][0] = arr_center[pointind[i]*3+0];
+    fmat2[3][1] = arr_center[pointind[i]*3+1];
+    fmat2[3][2] = arr_center[pointind[i]*3+2];
+    fmat2[3][3] = 1;
+    
+
+    hpld2->model(fmat2);    
+
+    scene.add(hpld2);   
+  }
+
+  for (count = 1; count<countline-2; count++)
+  {
+    //infile >> curnameind;
+    //infile >> center[0] >> center[1] >> center[2];
+    curnameind = arr_nameid[count];
+    center[0] = arr_center[count*3];
+    center[1] = arr_center[count*3+1];
+    center[2] = arr_center[count*3+2];
+    double FT[3];
+    double FN[3],FB[3];
+    double dr[3],ddr[3];
+    for (int i=0; i<3; i++)
+      dr[i] = cubicFilter_G<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+    //dr[1] = cubicFilter_G<double>(0, arr_center[(count-1)*3+1], arr_center[(count)*3+1], arr_center[(count+1)*3+1], arr_center[(count+2)*3+1]);
+    //dr[2] = cubicFilter_G<double>(0, arr_center[(count-1)*3+2], arr_center[(count)*3+2], arr_center[(count+1)*3+2], arr_center[(count+2)*3+2]);
+    for (int i=0; i<3; i++)
+      ddr[i] = cubicFilter_GG<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+
+    normalize(dr,3);
+    normalize(ddr,3);
+
+    memcpy(FT,dr,sizeof(double)*3);
+    double crossddrdr[3];
+    cross(ddr,dr,crossddrdr);
+    cross(dr,crossddrdr,FN);
+    normalize(FN,3);
+    cross(FT,FN,FB);
+    memcpy(dir1,FN,sizeof(double)*3);
+    memcpy(dir2,FB,sizeof(double)*3);
+    printf("N = %f %f %f, B = %f %f %f, T = %f %f %f, dotNB = %f, dotNT = %f, dotBT = %f\n",FN[0],FN[1],FN[2],FB[0],FB[1],FB[2],FT[0],FT[1],FT[2],
+      dotProduct(FN,FB,3),dotProduct(FN,FT,3),dotProduct(FB,FT,3));
+
+    limnPolyData *lpld = limnPolyDataNew();
+    limnPolyDataSquare(lpld, 1 << limnPolyDataInfoNorm);
+
+    printf("after initializing lpld\n");
+    
+    Hale::Polydata *hpld = new Hale::Polydata(lpld, true,
+                         Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+                         "square");
+    hpld->colorSolid(lerp(0,1,0,count,countline-1),lerp(1,0,0,count,countline-1),0.5);
+    printf("after setting color for hpld\n");
+    
+    glm::mat4 tmat = glm::mat4();
+    
+    tmat[0][0] = FN[0];
+    tmat[0][1] = FN[1];
+    tmat[0][2] = FN[2];
+    tmat[0][3] = 0;
+    tmat[1][0] = FB[0];
+    tmat[1][1] = FB[1];
+    tmat[1][2] = FB[2];
+    tmat[1][3] = 0;
+    tmat[2][0] = FT[0];
+    tmat[2][1] = FT[1];
+    tmat[2][2] = FT[2];
+    tmat[2][3] = 0;
+    tmat[3][0] = center[0];
+    tmat[3][1] = center[1];
+    tmat[3][2] = center[2];
+    tmat[3][3] = 1;
+    
+    glm::mat4 smat = glm::mat4();
+    smat[0][0] = 2;
+    smat[1][1] = 2;
+    glm::mat4 fmat = tmat*smat;
+
+    hpld->model(fmat);    
+
+    scene.add(hpld);
+    
+//add a sphere
+    limnPolyData *lpld2 = limnPolyDataNew();
+    limnPolyDataIcoSphere(lpld2, 1 << limnPolyDataInfoNorm, 3);
+
+    Hale::Polydata *hpld2 = new Hale::Polydata(lpld2, true,
+                         Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+                         "IcoSphere");
+    hpld2->colorSolid(lerp(0,1,0,count,countline-1),lerp(1,0,0,count,countline-1),0.5);
+    
+    glm::mat4 fmat2 = glm::mat4();
+    
+    fmat2[0][0] = spherescale;
+    fmat2[1][1] = spherescale;
+    fmat2[2][2] = spherescale;
+    fmat2[3][0] = center[0];
+    fmat2[3][1] = center[1];
+    fmat2[3][2] = center[2];
+    fmat2[3][3] = 1;
+    
+
+    hpld2->model(fmat2);    
+
+    scene.add(hpld2);    
+    
+    printf("after adding hpld to scene\n");
+
+    printf("added lpld\n");
+
 
     cout<<"Before read in file, with curnameind = "<<curnameind<<", center = "<<center[0]<<" "<<center[1]<<" "<<center[2]<<endl;
     sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
@@ -1216,11 +1396,20 @@ main(int argc, const char **argv) {
     drawCircle(imageQuantized,4,size[0],size[1],1,size[0]/2,size[1]/2,20);
 //end of cuda_rendering
 
-    sprintf(outnameslice,"cpr_seq_%d.tga",curnameind);
-    saveImageWithoutQuantizing<unsigned char>(size[0],size[1],4,imageQuantized,outnameslice);
+    //sprintf(outnameslice,"cpr_seq_%d.tga",curnameind);
+    //saveImageWithoutQuantizing<unsigned char>(size[0],size[1],4,imageQuantized,outnameslice);
 
     initalized = 1;
     //count++;
+    sprintf(outnameslice,"cpr_seq_%d.png",curnameind);
+    if (nrrdWrap_va(ndblpng, imageQuantized, nrrdTypeUChar, 3, 4, width, height)
+      || nrrdSave(outnameslice, ndblpng, NULL)
+          ) {
+      char *err = biffGetDone(NRRD);
+      printf("%s: couldn't save output:\n%s", argv[0], err);
+      free(err); nrrdNix(ndblpng);
+      exit(1);
+      }
   }
 
   cout<<"Before allocating output nrrd"<<endl;  
@@ -1238,6 +1427,18 @@ main(int argc, const char **argv) {
   }
 
   cout<<"After saving output nrrd"<<endl;
+  scene.drawInit();
+  printf("after scene.drawInit()\n");
+  render(&viewer);
+  printf("after render(&viewer)\n");
+  while(!Hale::finishing){
+    glfwWaitEvents();
+    render(&viewer);
+  }
+
+  /* clean exit; all okay */
+  Hale::done();
+ 
   airMopOkay(mop);
 
   return 0;

@@ -1128,7 +1128,7 @@ main(int argc, const char **argv) {
   pointind[0] = 0;
   pointind[1] = countline-1;
   pointind[2] = countline-2;
-  double spherescale = 0.2;
+  double spherescale = 0.4;
   for (int i=0; i<3; i++)
   {
     limnPolyData *lpld2 = limnPolyDataNew();

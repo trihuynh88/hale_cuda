@@ -648,7 +648,6 @@ void kernel_cpr(int* dim, int *size, double *center, double *dir1, double *dir2,
     imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = 1;   
 }
 
-
 void drawCircle(unsigned char *img, int s0, int s1, int s2, int drawchan, int c1, int c2, double rad)
 {
   double angstep = 0.2;
@@ -661,6 +660,23 @@ void drawCircle(unsigned char *img, int s0, int s1, int s2, int drawchan, int c1
     i2 += c2;
 
     img[i2*s1*s0 + i1*s0 + drawchan] = 255;
+  }
+}
+
+//draw the first N circles on the grid of RxC
+void drawNCircle(unsigned char *img, int s0, int s1, int s2, int drawchan, int N, int g1, int g2)
+{
+  double rad;
+  double w1 = s1/g1;
+  double w2 = s2/g2;
+  rad = w1<w2?w1/3:w2/3;
+  for (int i=0; i<N; i++)
+  {
+    int gi1 = i/g1;
+    int gi2 = i%g2;
+    int pi1 = gi1*w1+w1/2;
+    int pi2 = gi2*w2+w2/2;
+    drawCircle(img,s0,s1,s2,drawchan,pi1,pi2,rad);
   }
 }
 
@@ -1437,6 +1453,7 @@ main(int argc, const char **argv) {
     unsigned char *imageQuantized = new unsigned char[size[0]*size[1]*4];
     quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
     setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+    drawNCircle(imageQuantized,4,size[0],size[1],1, count, countline/2,countline/2);
 
     hpld->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
     scene.add(hpld);

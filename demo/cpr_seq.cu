@@ -1179,7 +1179,15 @@ main(int argc, const char **argv) {
 
   //test LineStrip
   limnPolyData *lpld3 = limnPolyDataNew();
-  limnPolyDataAlloc(lpld3, 0, 4, 4, 1);
+  limnPolyDataAlloc(lpld3, 0, countline, countline, 1);
+  for (int i=0; i<countline; i++)
+  {
+    ELL_4V_SET(lpld3->xyzw + 4*i, arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2], 1.0);  
+    lpld3->indx[i] = i;
+  }
+  lpld3->type[0] = limnPrimitiveLineStrip;
+  lpld3->icnt[0] = countline;
+  /*
   ELL_4V_SET(lpld3->xyzw + 4*0, arr_center[0*3+0], arr_center[0*3+1], arr_center[0*3+2], 1.0);
   ELL_4V_SET(lpld3->xyzw + 4*1, arr_center[1*3+0], arr_center[1*3+1], arr_center[1*3+2], 1.0);
   ELL_4V_SET(lpld3->xyzw + 4*2, arr_center[2*3+0], arr_center[2*3+1], arr_center[2*3+2], 1.0);
@@ -1187,7 +1195,7 @@ main(int argc, const char **argv) {
   lpld3->type[0] = limnPrimitiveLineStrip;
   ELL_4V_SET(lpld3->indx, 0, 1, 2, 3);
   lpld3->icnt[0] = 4;
-
+  */
   //test tube
   limnPolyData *lpld4 = limnPolyDataNew();
   limnPolyDataSpiralTubeWrap(lpld4, lpld3,

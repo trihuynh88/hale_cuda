@@ -1177,6 +1177,35 @@ main(int argc, const char **argv) {
     scene.add(hpld2);   
   }
 
+  //test LineStrip
+  limnPolyData *lpld3 = limnPolyDataNew();
+  limnPolyDataAlloc(lpld3, 0, 4, 4, 1);
+  ELL_4V_SET(lpld3->xyzw + 4*0, arr_center[0*3+0], arr_center[0*3+1], arr_center[0*3+2], 1.0);
+  ELL_4V_SET(lpld3->xyzw + 4*1, arr_center[1*3+0], arr_center[1*3+1], arr_center[1*3+2], 1.0);
+  ELL_4V_SET(lpld3->xyzw + 4*2, arr_center[2*3+0], arr_center[2*3+1], arr_center[2*3+2], 1.0);
+  ELL_4V_SET(lpld3->xyzw + 4*3, arr_center[3*3+0], arr_center[3*3+1], arr_center[3*3+2], 1.0);
+  lpld3->type[0] = limnPrimitiveLineStrip;
+  ELL_4V_SET(lpld3->indx, 0, 1, 2, 3);
+  lpld3->icnt[0] = 4;
+
+  //test tube
+  limnPolyData *lpld4 = limnPolyDataNew();
+  limnPolyDataSpiralTubeWrap(lpld4, lpld3,
+                           0, NULL,
+                           50, 10,
+                           0.2);
+
+  Hale::Polydata *hpld3 = new Hale::Polydata(lpld3, true,
+                         Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+                         "LineStrip");
+  hpld3->colorSolid(1.0,1.0,0.5);
+
+  Hale::Polydata *hpld4 = new Hale::Polydata(lpld4, true,
+                         Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+                         "SpiralTube");
+  hpld4->colorSolid(1.0,1.0,0.5);  
+  scene.add(hpld4);
+
   double prevFT[3], prevFN[3], prevFB[3];
   for (count = 1; count<countline-2; count++)
   {

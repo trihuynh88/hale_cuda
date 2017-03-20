@@ -626,6 +626,7 @@ void kernel_cpr(int* dim, int *size, double *center, double *dir1, double *dir2,
 
     double mipval = INT_MIN;
 
+    
     double curpoint[3];
     int k;
     for (k=0; k<3; k++)
@@ -640,8 +641,7 @@ void kernel_cpr(int* dim, int *size, double *center, double *dir1, double *dir2,
       curpoint[1] = curpoint[1] + mipdir[1]*sstep;
       curpoint[2] = curpoint[2] + mipdir[2]*sstep;
     }
-
-    //double val = tex3DBicubic<float,float>(tex0,pointi[0],pointi[1],pointi[2]);    
+        
     imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = mipval;
     for (int k=1; k<nOutChannel-1; k++)
       imageDouble[j*size[0]*nOutChannel+i*nOutChannel+k] = 0;
@@ -931,6 +931,12 @@ void copyImageChannel(T1 *image1,int s10,int s11,int s12,int c1,T2 *image2,int s
     }
 }
 
+double computeAngle(double *v1, double *v2)
+{
+  double dp = dotProduct(v1,v2,3);
+  return acos(dp)*180/M_PI;
+}
+
 void render(Hale::Viewer *viewer){
   viewer->draw();
   viewer->bufferSwap();
@@ -1171,6 +1177,7 @@ main(int argc, const char **argv) {
     scene.add(hpld2);   
   }
 
+  double prevFT[3], prevFN[3], prevFB[3];
   for (count = 1; count<countline-2; count++)
   {
     //infile >> curnameind;
@@ -1203,6 +1210,18 @@ main(int argc, const char **argv) {
     memcpy(dir2,FB,sizeof(double)*3);
     printf("N = %f %f %f, B = %f %f %f, T = %f %f %f, dotNB = %f, dotNT = %f, dotBT = %f\n",FN[0],FN[1],FN[2],FB[0],FB[1],FB[2],FT[0],FT[1],FT[2],
       dotProduct(FN,FB,3),dotProduct(FN,FT,3),dotProduct(FB,FT,3));
+
+    if (count>1)
+    {
+      printf("count = %d\n", count);
+      printf("angle of FT: %f\n", computeAngle(FT,prevFT));
+      printf("angle of FN: %f\n", computeAngle(FN,prevFN));
+      printf("angle of FB: %f\n", computeAngle(FB,prevFB));
+    }
+
+    memcpy(prevFB,FB,sizeof(double)*3);
+    memcpy(prevFN,FN,sizeof(double)*3);
+    memcpy(prevFT,FT,sizeof(double)*3);
 
     limnPolyData *lpld = limnPolyDataNew();
     limnPolyDataSquare(lpld, 1 << limnPolyDataInfoNorm | 1 << limnPolyDataInfoTex2);
@@ -1413,10 +1432,8 @@ main(int argc, const char **argv) {
       cudaMemcpy(d_dim, dim, 4*sizeof(int), cudaMemcpyHostToDevice);
 
       cudaMalloc(&d_dir1, sizeof(dir1));
-      cudaMemcpy(d_dir1, dir1, 3*sizeof(double), cudaMemcpyHostToDevice);
-
-      cudaMalloc(&d_dir2, sizeof(dir2));
-      cudaMemcpy(d_dir2, dir2, 3*sizeof(double), cudaMemcpyHostToDevice);
+      
+      cudaMalloc(&d_dir2, sizeof(dir2));      
 
       cudaMalloc(&d_imageDouble,sizeof(double)*size[0]*size[1]*nOutChannel);
 
@@ -1426,6 +1443,8 @@ main(int argc, const char **argv) {
       cudaMalloc(&d_center,3*sizeof(double));
     }
 
+    cudaMemcpy(d_dir1, dir1, 3*sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_dir2, dir2, 3*sizeof(double), cudaMemcpyHostToDevice);
     cudaMemcpy(d_center,center,3*sizeof(double), cudaMemcpyHostToDevice);
 
 

@@ -1552,8 +1552,23 @@ main(int argc, const char **argv) {
   printf("after scene.drawInit()\n");
   render(&viewer);
   printf("after render(&viewer)\n");
+  bool stateBKey = false;
   while(!Hale::finishing){
     glfwWaitEvents();
+    if (stateBKey!=viewer.getStateBKey())
+    {
+      stateBKey = viewer.getStateBKey();
+      if (stateBKey)
+      {
+        scene.remove(hpld4);
+        scene.add(hpld3);
+      }
+      else
+      {
+        scene.remove(hpld3);
+        scene.add(hpld4);
+      }
+    }
     render(&viewer);
   }
 

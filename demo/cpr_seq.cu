@@ -1052,14 +1052,16 @@ main(int argc, const char **argv) {
   infile.close();
   cout<<"Initialized countline = "<<countline<<endl;
 
-  double thresdis = 1;
+  double thresdis = 1.0;
   vector<double> vcenter;
 
   vcenter.push_back(arr_center[0]);
   vcenter.push_back(arr_center[1]);
   vcenter.push_back(arr_center[2]);
 
-
+  double thresang = 150;
+  //correction by thresholding distance
+  
   for (int i=1; i<countline; i++)
   {
     int countv = vcenter.size();
@@ -1076,6 +1078,39 @@ main(int argc, const char **argv) {
       arr_nameid[countv-1] = arr_nameid[i];
     }
   }
+  countline = vcenter.size()/3;
+  memcpy(arr_center,vcenter.data(),sizeof(double)*countline*3);
+  
+
+  //correction by thresholding angle
+  vcenter.clear();
+  vcenter.push_back(arr_center[0]);
+  vcenter.push_back(arr_center[1]);
+  vcenter.push_back(arr_center[2]);
+  vcenter.push_back(arr_center[3]);
+  vcenter.push_back(arr_center[4]);
+  vcenter.push_back(arr_center[5]);
+  double prevec[3];
+  prevec[0] = arr_center[3]-arr_center[0];
+  prevec[1] = arr_center[4]-arr_center[1];
+  prevec[2] = arr_center[5]-arr_center[2];
+  normalize(prevec,3);
+  for (int i=2; i<countline; i++)
+  {
+    double curvec[3];
+    curvec[0] = arr_center[i*3+0]-arr_center[(i-1)*3+0];
+    curvec[1] = arr_center[i*3+1]-arr_center[(i-1)*3+1];
+    curvec[2] = arr_center[i*3+2]-arr_center[(i-1)*3+2];
+    normalize(curvec,3);
+    double ang = computeAngle(prevec,curvec);
+    if (ang>thresang)
+      continue;
+    memcpy(prevec,curvec,sizeof(double)*3);
+    vcenter.push_back(arr_center[i*3+0]);
+    vcenter.push_back(arr_center[i*3+1]);
+    vcenter.push_back(arr_center[i*3+2]);
+  }
+
   printf("after correcting input\n");
   countline = vcenter.size()/3;
   memcpy(arr_center,vcenter.data(),sizeof(double)*countline*3);

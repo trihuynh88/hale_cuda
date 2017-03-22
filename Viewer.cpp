@@ -238,7 +238,10 @@ Viewer::keyCB(GLFWwindow *gwin, int key, int scancode, int action, int mods) {
   } else if (GLFW_KEY_B  == key && GLFW_PRESS == action) {
 	vwr->_stateBKey = (1-(vwr->_stateBKey));
   }
-
+  if (GLFW_PRESS == action)
+	vwr->_keyPressed = key;
+  else
+	vwr->_keyPressed = 0;
   return;
 }
 
@@ -799,6 +802,11 @@ bool Viewer::isMasked()
 bool Viewer::getStateBKey()
 {
   return (_stateBKey!=0);
+}
+
+int Viewer::getKeyPressed()
+{
+  return (_keyPressed);
 }
 
 } // namespace Hale

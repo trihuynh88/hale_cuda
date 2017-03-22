@@ -1249,6 +1249,8 @@ main(int argc, const char **argv) {
   hpld4->colorSolid(1.0,1.0,0.5);  
   scene.add(hpld4);
 
+  vector<Hale::Polydata *> vtexture;
+
   double prevFT[3], prevFN[3], prevFB[3];
   for (count = 1; count<countline-2; count++)
   {
@@ -1548,6 +1550,7 @@ main(int argc, const char **argv) {
 
     hpld->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
     scene.add(hpld);
+    vtexture.push_back(hpld);
     
     drawCircle(imageQuantized,4,size[0],size[1],1,size[0]/2,size[1]/2,20);
 //end of cuda_rendering
@@ -1588,8 +1591,10 @@ main(int argc, const char **argv) {
   render(&viewer);
   printf("after render(&viewer)\n");
   bool stateBKey = false;
+  bool stateMKey = false;
   while(!Hale::finishing){
     glfwWaitEvents();
+    int keyPressed = viewer.getKeyPressed();
     if (stateBKey!=viewer.getStateBKey())
     {
       stateBKey = viewer.getStateBKey();
@@ -1602,6 +1607,20 @@ main(int argc, const char **argv) {
       {
         scene.remove(hpld3);
         scene.add(hpld4);
+      }
+    }
+    if (keyPressed == 'M')
+    {
+      stateMKey = !stateMKey;
+      if (stateMKey)
+      {
+        for (int i=0; i<vtexture.size(); i++)
+          scene.remove(vtexture[i]);
+      }
+      else
+      {
+        for (int i=0; i<vtexture.size(); i++)
+          scene.add(vtexture[i]);
       }
     }
     render(&viewer);

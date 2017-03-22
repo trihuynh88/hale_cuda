@@ -330,6 +330,7 @@ class Viewer {
   bool isMouseReleased();
   bool isMasked();
   bool getStateBKey();
+  int getKeyPressed();
 
  protected:
   glm::vec3 _lightDir;
@@ -358,6 +359,7 @@ class Viewer {
   int *_tvalue; // value to toggle via space bar
   int _stateMasked;
   int _stateBKey;
+  int _keyPressed;
 
   GLFWwindow *_window; // the window we manage
   static void cursorPosCB(GLFWwindow *gwin, double xx, double yy);

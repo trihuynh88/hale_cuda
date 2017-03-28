@@ -391,6 +391,11 @@ void uniform(std::string name, glm::vec3 vv, bool sticky) {
     _programCurrent->uniform(name, vv, sticky);
   }
 }
+
+void addStickyUniform(std::string name, glm::vec3 vv) {
+  stickyUniformVec3[name] = vv;
+}
+
 void
 Program::uniform(std::string name, glm::vec3 vv, bool sticky) const {
   static const std::string me="Program::uniform";
@@ -418,6 +423,7 @@ void uniform(std::string name, glm::vec4 vv, bool sticky) {
     _programCurrent->uniform(name, vv, sticky);
   }
 }
+
 void
 Program::uniform(std::string name, glm::vec4 vv, bool sticky) const {
   static const std::string me="Program::uniform";
@@ -445,6 +451,11 @@ void uniform(std::string name, glm::mat4 vv, bool sticky) {
     _programCurrent->uniform(name, vv, sticky);
   }
 }
+
+void addStickyUniform(std::string name, glm::mat4 vv) {
+  stickyUniformMat4[name] = vv;
+}
+
 void
 Program::uniform(std::string name, glm::mat4 vv, bool sticky) const {
   static const std::string me="Program::uniform";
@@ -458,6 +469,8 @@ Program::uniform(std::string name, glm::mat4 vv, bool sticky) const {
   if (GL_FLOAT_MAT4 != ii.enumVal) {
     throw std::runtime_error(me + ": \"" + name + "\" is a " + ii.glslStr + " but got a mat4");
   }
+  if (debugging)
+    printf("ProgramID %d: before calling glUniformMatrix4fv for uniform %s with id %d\n",_progId,name.c_str(),uniformLocation.at(name));
   glUniformMatrix4fv(uniformLocation.at(name), 1, 0, glm::value_ptr(vv));
   glErrorCheck(me, std::string("glUniformMatrix4fv(") + name + ")");
   if (debugging) {

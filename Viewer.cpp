@@ -685,6 +685,66 @@ Viewer::Viewer(int width, int height, const char *label, Scene *scene) {
   printf("\nType 'r' to reset view, 'h' for help using keyboard and viewer\n");
 }
 
+Viewer::Viewer(int width,  int height, const char *label, Scene *scene, GLFWwindow* window)
+{
+  static const char me[]="Hale::Viewer::Viewer";
+
+  _lightDir = glm::normalize(glm::vec3(-1.0f, 1.0f, 3.0f));
+  _scene = scene;
+  _button[0] = _button[1] = false;
+  _verbose = 0;
+  _upFix = false;
+  _mode = viewerModeNone;
+  _refreshCB = NULL;
+  _refreshData = NULL;
+  _widthScreen = width;
+  _heightScreen = height;
+  _lastX = _lastY = AIR_NAN;
+  _slvalue = NULL;
+  _tvalue = NULL;
+  _slmin = _slmax = AIR_NAN;
+  _slidable = false;
+  _sliding = false;
+  _stateMasked = 0;
+  _stateBKey = 0;
+
+  // http://www.glfw.org/docs/latest/window.html
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); // Use OpenGL Core v3.2
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+  /* look into using this!
+     glfwWindowHint(GLFW_SAMPLES, 0); */
+  _label = label ? label : "Viewer";
+  if (window)
+    _window = glfwCreateWindow(width, height, _label.c_str(), NULL, window);
+  else
+    _window = glfwCreateWindow(width, height, _label.c_str(), NULL, NULL);
+
+  if (!_window) {
+    fprintf(stderr, "%s: glfwCreateWindow(%d,%d) failed\n",
+            me, width, height);
+    finishing = true;
+  }
+
+  glfwGetFramebufferSize(_window, &_widthBuffer, &_heightBuffer);
+  _nbuffRGBA[0] = nrrdNew();
+  _nbuffRGBA[1] = nrrdNew();
+  _buffAlloc();
+  glfwSetWindowUserPointer(_window, static_cast<void*>(this));
+  glfwSetCursorPosCallback(_window, cursorPosCB);
+  glfwSetMouseButtonCallback(_window, mouseButtonCB);
+  // glfwSetWindowSizeCallback(_window, windowSizeCB);
+  glfwSetFramebufferSizeCallback(_window, framebufferSizeCB);
+  glfwSetKeyCallback(_window, keyCB);
+  glfwSetWindowCloseCallback(_window, windowCloseCB);
+  glfwSetWindowRefreshCallback(_window, windowRefreshCB);
+
+  shapeUpdate();
+  title();
+  printf("\nType 'r' to reset view, 'h' for help using keyboard and viewer\n");
+}
+
 Viewer::~Viewer() {
   //static const char me[]="Viewer::~Viewer";
   nrrdNuke(_nbuffRGBA[0]);
@@ -760,12 +820,15 @@ const Scene *Viewer::scene() { return _scene; }
 void Viewer::scene(Scene *scn) { _scene = scn; }
 
 void Viewer::draw(void) {
-
-  Hale::uniform("projectMat", camera.project(), true);
-  Hale::uniform("viewMat", camera.view(), true);
+  //Hale::_programCurrent = NULL;
+  //Hale::uniform("projectMat", camera.project(), true);
+  Hale::addStickyUniform("projectMat", camera.project());
+  //Hale::uniform("viewMat", camera.view(), true);
+  Hale::addStickyUniform("viewMat", camera.view());
   /* Here is where we convert view-space light direction into world-space */
   glm::vec3 ldir = glm::vec3(camera.viewInv()*glm::vec4(_lightDir,0.0f));
-  Hale::uniform("lightDir", ldir, true);
+  //Hale::uniform("lightDir", ldir, true);
+  Hale::addStickyUniform("lightDir", ldir);
   _scene->draw();
 }
 
@@ -807,6 +870,11 @@ bool Viewer::getStateBKey()
 int Viewer::getKeyPressed()
 {
   return (_keyPressed);
+}
+
+GLFWwindow* Viewer::getGLFWwindow()
+{
+  return _window;
 }
 
 } // namespace Hale

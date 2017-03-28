@@ -257,6 +257,7 @@ class Scene;  // (forward declaration)
 class Viewer {
  public:
   explicit Viewer(int width,  int height, const char *label, Scene *scene);
+  explicit Viewer(int width,  int height, const char *label, Scene *scene, GLFWwindow* window);
   ~Viewer();
 
   /* the camera we update with user interactions */
@@ -331,6 +332,7 @@ class Viewer {
   bool isMasked();
   bool getStateBKey();
   int getKeyPressed();
+  GLFWwindow* getGLFWwindow();
 
  protected:
   glm::vec3 _lightDir;
@@ -408,6 +410,8 @@ extern void uniform(std::string, float, bool sticky=false);
 extern void uniform(std::string, glm::vec3, bool sticky=false);
 extern void uniform(std::string, glm::vec4, bool sticky=false);
 extern void uniform(std::string, glm::mat4, bool sticky=false);
+extern void addStickyUniform(std::string name, glm::mat4 vv);
+extern void addStickyUniform(std::string name, glm::vec3 vv);
 /* The "sticky uniforms"; Program->use() calls stickyUniform() to re-set
    all the uniforms that were intended to be used for all programs */
 extern std::map<std::string, float> stickyUniformFloat;

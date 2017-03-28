@@ -409,6 +409,13 @@ Polydata::draw() const {
     printf("!%s(%s): ____________________________________________ \n", me, _name.c_str());
   _program->use();
 
+  //move from Viewer.draw()
+  //_program->uniform("projectMat", camera.project(), true);
+  //_program->uniform("viewMat", camera.view(), true);
+  /* Here is where we convert view-space light direction into world-space */
+  //glm::vec3 ldir = glm::vec3(camera.viewInv()*glm::vec4(_lightDir,0.0f));
+  //Hale::uniform("lightDir", ldir, true);
+
   const limnPolyData *lpld = this->lpld();
   int ibits = limnPolyDataInfoBitFlag(lpld);
   if (!(ibits & (1 << limnPolyDataInfoRGBA))) {

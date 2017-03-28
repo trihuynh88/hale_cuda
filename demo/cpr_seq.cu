@@ -1155,11 +1155,12 @@ main(int argc, const char **argv) {
   camortho = 1;
   camsize[0] = 500;
   camsize[1] = 500;
-
+  
   Hale::init();
+  Hale::debugging = 1;
   Hale::Scene scene;
   /* then create viewer (in order to create the OpenGL context) */
-  Hale::Viewer viewer(camsize[0], camsize[1], "Iso", &scene);
+  Hale::Viewer viewer(camsize[0], camsize[1], "Viewer1", &scene);
   viewer.lightDir(glm::vec3(-1.0f, 1.0f, 3.0f));
   viewer.camera.init(glm::vec3(camfr[0], camfr[1], camfr[2]),
                      glm::vec3(camat[0], camat[1], camat[2]),
@@ -1169,6 +1170,23 @@ main(int argc, const char **argv) {
   viewer.refreshCB((Hale::ViewerRefresher)render);
   viewer.refreshData(&viewer);
   viewer.current();
+  //test adding another viewer
+  Hale::Scene scene2;
+  //Hale::Viewer viewer2(camsize[0], camsize[1], "Viewer2", &scene2, viewer.getGLFWwindow());
+  Hale::Viewer viewer2(camsize[0], camsize[1], "Viewer2", &scene2);
+  viewer2.lightDir(glm::vec3(-1.0f, 1.0f, 3.0f));
+  viewer2.camera.init(glm::vec3(camfr[0], camfr[1], camfr[2]),
+                     glm::vec3(camat[0], camat[1], camat[2]),
+                     glm::vec3(camup[0], camup[1], camup[2]),
+                     camFOV, (float)camsize[0]/camsize[1],
+                     camnc, camfc, camortho);
+  viewer2.refreshCB((Hale::ViewerRefresher)render);
+  viewer2.refreshData(&viewer2);
+  //viewer2.current();
+  //scene2.drawInit();
+  //render(&viewer2);
+
+  //viewer.current();
 
   printf("Initialized viewer\n");
 
@@ -1179,7 +1197,15 @@ main(int argc, const char **argv) {
   newprog->bindAttribute(Hale::vertAttrIdxNorm, "normalVA");
   newprog->bindAttribute(Hale::vertAttrIdxTex2, "tex2VA");
   newprog->link();    
-
+  /*
+  Hale::Program *newprog2 = new Hale::Program("texdemo-vert.glsl","texdemo-frag.glsl");
+  newprog2->compile();
+  newprog2->bindAttribute(Hale::vertAttrIdxXYZW, "positionVA");
+  newprog2->bindAttribute(Hale::vertAttrIdxRGBA, "colorVA");
+  newprog2->bindAttribute(Hale::vertAttrIdxNorm, "normalVA");
+  newprog2->bindAttribute(Hale::vertAttrIdxTex2, "tex2VA");
+  newprog2->link(); 
+  */
   //adding some points outside of the valid convolution range
   int pointind[3];
   pointind[0] = 0;
@@ -1190,10 +1216,11 @@ main(int argc, const char **argv) {
   {
     limnPolyData *lpld2 = limnPolyDataNew();
     limnPolyDataIcoSphere(lpld2, 1 << limnPolyDataInfoNorm, 3);
-
+    //viewer2.current();
     Hale::Polydata *hpld2 = new Hale::Polydata(lpld2, true,
                          Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
                          "IcoSphere");
+    //viewer.current();
     hpld2->colorSolid(lerp(0,1,0,pointind[i],countline-1),lerp(1,0,0,pointind[i],countline-1),0.5);
     
     glm::mat4 fmat2 = glm::mat4();
@@ -1213,6 +1240,7 @@ main(int argc, const char **argv) {
   }
 
   //test LineStrip
+  //viewer2.current();
   limnPolyData *lpld3 = limnPolyDataNew();
   limnPolyDataAlloc(lpld3, 0, countline, countline, 1);
   for (int i=0; i<countline; i++)
@@ -1222,6 +1250,7 @@ main(int argc, const char **argv) {
   }
   lpld3->type[0] = limnPrimitiveLineStrip;
   lpld3->icnt[0] = countline;
+  //viewer.current();
   /*
   ELL_4V_SET(lpld3->xyzw + 4*0, arr_center[0*3+0], arr_center[0*3+1], arr_center[0*3+2], 1.0);
   ELL_4V_SET(lpld3->xyzw + 4*1, arr_center[1*3+0], arr_center[1*3+1], arr_center[1*3+2], 1.0);
@@ -1238,10 +1267,12 @@ main(int argc, const char **argv) {
                            50, 10,
                            0.2);
 
+  //viewer2.current();
   Hale::Polydata *hpld3 = new Hale::Polydata(lpld3, true,
                          Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
-                         "LineStrip");
+                         "LineStrip");  
   hpld3->colorSolid(1.0,1.0,0.5);
+  //viewer.current();
 
   Hale::Polydata *hpld4 = new Hale::Polydata(lpld4, true,
                          Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
@@ -1250,7 +1281,9 @@ main(int argc, const char **argv) {
   scene.add(hpld4);
 
   vector<Hale::Polydata *> vtexture;
-
+  vector<Hale::Polydata *> vtexture2;
+  unsigned char *imageQuantized;
+  imageQuantized = new unsigned char[size[0]*size[1]*4];
   double prevFT[3], prevFN[3], prevFB[3];
   for (count = 1; count<countline-2; count++)
   {
@@ -1308,6 +1341,7 @@ main(int argc, const char **argv) {
     Hale::Polydata *hpld = new Hale::Polydata(lpld, true,
                          NULL,
                          "square");
+
     hpld->program(newprog);
     //hpld->colorSolid(lerp(0,1,0,count,countline-1),lerp(1,0,0,count,countline-1),0.5);
     //printf("after setting color for hpld\n");
@@ -1542,8 +1576,7 @@ main(int argc, const char **argv) {
     short height = size[1];
 
     copyImageChannel<double,short>(imageDouble,4,size[0],size[1],0,outdata+count*size[0]*size[1],1,0);
-
-    unsigned char *imageQuantized = new unsigned char[size[0]*size[1]*4];
+    
     quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
     setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
     drawNCircle(imageQuantized,4,size[0],size[1],1, count, countline/2,countline/2);
@@ -1551,6 +1584,19 @@ main(int argc, const char **argv) {
     hpld->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
     scene.add(hpld);
     vtexture.push_back(hpld);
+
+    //texture in viewer2
+    /*
+    limnPolyData *lpldv2 = limnPolyDataNew();
+    limnPolyDataSquare(lpldv2, 1 << limnPolyDataInfoNorm | 1 << limnPolyDataInfoTex2);    
+    Hale::Polydata *hpldv2 = new Hale::Polydata(lpldv2, true,
+                          NULL,
+                         "square");
+    hpldv2->program(newprog2);
+    //hpldv2->program(newprog);
+    hpldv2->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
+    vtexture2.push_back(hpldv2);
+    */
     
     drawCircle(imageQuantized,4,size[0],size[1],1,size[0]/2,size[1]/2,20);
 //end of cuda_rendering
@@ -1585,11 +1631,103 @@ main(int argc, const char **argv) {
     exit(1);
   }
 
+  //scene.add(vtexture2[0]);
+  
+  //scene2.add(vtexture2[0]);
+  viewer2.current();  
+  printf("after setting viewer2.current()\n");
+    
+    limnPolyData *lpldview2 = limnPolyDataNew();
+    limnPolyDataSquare(lpldview2, 1 << limnPolyDataInfoNorm | 1 << limnPolyDataInfoTex2);
+
+    Hale::Polydata *hpldview2 = new Hale::Polydata(lpldview2, true,
+                         NULL,//Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+                         "square");
+    Hale::Program *newprog2 = new Hale::Program("texdemo-vert.glsl","texdemo-frag.glsl");
+    newprog2->compile();
+    newprog2->bindAttribute(Hale::vertAttrIdxXYZW, "positionVA");
+    newprog2->bindAttribute(Hale::vertAttrIdxRGBA, "colorVA");
+    newprog2->bindAttribute(Hale::vertAttrIdxNorm, "normalVA");
+    newprog2->bindAttribute(Hale::vertAttrIdxTex2, "tex2VA");
+    newprog2->link();  
+
+    hpldview2->program(newprog2);
+
+    hpldview2->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
+    /*
+    count = 2;
+    center[0] = arr_center[count*3];
+    center[1] = arr_center[count*3+1];
+    center[2] = arr_center[count*3+2];
+    
+    double FT[3];
+    double FN[3],FB[3];
+    double dr[3],ddr[3];
+    for (int i=0; i<3; i++)
+      dr[i] = cubicFilter_G<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+    for (int i=0; i<3; i++)
+      ddr[i] = cubicFilter_GG<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+
+    normalize(dr,3);
+    normalize(ddr,3);
+
+    memcpy(FT,dr,sizeof(double)*3);
+    double crossddrdr[3];
+    cross(ddr,dr,crossddrdr);
+    cross(dr,crossddrdr,FN);
+    normalize(FN,3);
+    cross(FT,FN,FB);
+    memcpy(dir1,FN,sizeof(double)*3);
+    memcpy(dir2,FB,sizeof(double)*3);
+
+    glm::mat4 tmat = glm::mat4();
+    
+    tmat[0][0] = FN[0];
+    tmat[0][1] = FN[1];
+    tmat[0][2] = FN[2];
+    tmat[0][3] = 0;
+    tmat[1][0] = FB[0];
+    tmat[1][1] = FB[1];
+    tmat[1][2] = FB[2];
+    tmat[1][3] = 0;
+    tmat[2][0] = FT[0];
+    tmat[2][1] = FT[1];
+    tmat[2][2] = FT[2];
+    tmat[2][3] = 0;
+    tmat[3][0] = center[0];
+    tmat[3][1] = center[1];
+    tmat[3][2] = center[2];
+    tmat[3][3] = 1;
+    
+    glm::mat4 smat = glm::mat4();
+    smat[0][0] = 2;
+    smat[1][1] = 2;
+    glm::mat4 fmat = tmat*smat;
+
+    hpldview2->model(fmat);
+    */
+    
+  scene2.add(hpldview2);
+  //scene2.add(hpld3);
+  scene2.drawInit();
+  printf("after adding to scene2 and drawInit()\n");
+  viewer2.verbose(3);
+
+  render(&viewer2);
+  printf("after rendering viewer2\n");
+  viewer.current();
+
+
+  
+
   cout<<"After saving output nrrd"<<endl;
   scene.drawInit();
   printf("after scene.drawInit()\n");
   render(&viewer);
   printf("after render(&viewer)\n");
+
+
+
   bool stateBKey = false;
   bool stateMKey = false;
   while(!Hale::finishing){

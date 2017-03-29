@@ -1233,7 +1233,6 @@ main(int argc, const char **argv) {
     fmat2[3][2] = arr_center[pointind[i]*3+2];
     fmat2[3][3] = 1;
     
-
     hpld2->model(fmat2);    
 
     scene.add(hpld2);   
@@ -1241,15 +1240,57 @@ main(int argc, const char **argv) {
 
   //test LineStrip
   //viewer2.current();
+  int density = 10; //how many points per one unit length in index-space
+  int countls = 3;
+  for (int i=1; i<countline-3; i++)
+  {
+    double dis = sqrt(diss2P(arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2],
+                            arr_center[(i+1)*3+0], arr_center[(i+1)*3+1], arr_center[(i+1)*3+2]));
+    countls += (dis*density);
+  }
   limnPolyData *lpld3 = limnPolyDataNew();
-  limnPolyDataAlloc(lpld3, 0, countline, countline, 1);
+  //limnPolyDataAlloc(lpld3, 0, countline, countline, 1);
+  limnPolyDataAlloc(lpld3, 0, countls, countls, 1);
+  /*
   for (int i=0; i<countline; i++)
   {
     ELL_4V_SET(lpld3->xyzw + 4*i, arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2], 1.0);  
     lpld3->indx[i] = i;
   }
+  */
+  {
+    int i = 0; int j = 0;
+    ELL_4V_SET(lpld3->xyzw + 4*j, arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2], 1.0);  
+    lpld3->indx[j] = j;
+    i = countline-1; j = countls-1;
+    ELL_4V_SET(lpld3->xyzw + 4*j, arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2], 1.0);  
+    lpld3->indx[j] = j;
+    i = countline-2; j = countls-2;
+    ELL_4V_SET(lpld3->xyzw + 4*j, arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2], 1.0);  
+    lpld3->indx[j] = j;
+  }
+  int cpointind = 1;
+  for (int i=1; i<countline-3; i++)
+  {
+    double dis = sqrt(diss2P(arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2],
+                            arr_center[(i+1)*3+0], arr_center[(i+1)*3+1], arr_center[(i+1)*3+2]));
+    int countseg = dis*density;
+    double tsep = 1.0/((double)countseg);
+    for (int j=0; j<countseg; j++)
+    {
+      double curpoint[3];
+      for (int k=0; k<3; k++)
+        curpoint[k] = cubicFilter<double>((double)j*tsep, arr_center[(i-1)*3+k], arr_center[(i)*3+k], arr_center[(i+1)*3+k], arr_center[(i+2)*3+k]);
+      ELL_4V_SET(lpld3->xyzw + 4*cpointind, curpoint[0],curpoint[1],curpoint[2], 1.0);  
+      lpld3->indx[cpointind] = cpointind;
+      cpointind++;
+    }
+  }  
   lpld3->type[0] = limnPrimitiveLineStrip;
-  lpld3->icnt[0] = countline;
+  //lpld3->icnt[0] = countline;
+  lpld3->icnt[0] = countls;
+
+  printf("countls = %d\n", countls);
   //viewer.current();
   /*
   ELL_4V_SET(lpld3->xyzw + 4*0, arr_center[0*3+0], arr_center[0*3+1], arr_center[0*3+2], 1.0);
@@ -1285,6 +1326,7 @@ main(int argc, const char **argv) {
   unsigned char *imageQuantized;
   imageQuantized = new unsigned char[size[0]*size[1]*4];
   double prevFT[3], prevFN[3], prevFB[3];
+
   for (count = 1; count<countline-2; count++)
   {
     //infile >> curnameind;

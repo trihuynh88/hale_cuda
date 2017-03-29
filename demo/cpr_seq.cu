@@ -555,7 +555,7 @@ void invertMat33(double X[][3], double Y[][3])
     Y[2][2]= (X[0][0]* X[1][1]- X[1][0]* X[0][1]) * invdet;
 }
 
-__device__
+__host__ __device__
 void eigenOfHess(double* hessian, double *eigval)
 {
   double Dxx = hessian[cu_getIndex2(0,0,3,3)];
@@ -646,6 +646,144 @@ void kernel_cpr(int* dim, int *size, double *center, double *dir1, double *dir2,
     for (int k=1; k<nOutChannel-1; k++)
       imageDouble[j*size[0]*nOutChannel+i*nOutChannel+k] = 0;
     imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = 1;   
+}
+
+void computeMean(double *points, int n, double *means)
+{
+  memset(means,0,sizeof(double)*3);
+  for (int i=0; i<3; i++)
+  {
+    for (int k=0; k<n; k++)
+      means[i] += points[k*3+i];
+    means[i]/=n;
+  }
+}
+
+void computeCovariance(double *points, int n, double *cov)
+{
+  double means[3];
+  computeMean(points,n,means);
+  //memset(cov,0,sizeof(double)*9);
+  for (int i=0; i<3; i++)
+    for (int j=i; j<3; j++)
+    {
+      double localcov = 0;
+      for (int k=0; k<n; k++)
+      {
+        localcov += (points[k*3+i]-means[i])*(points[k*3+j]-means[j]);
+      }
+      localcov/=n;
+      cov[cu_getIndex2(i,j,3,3)] = cov[cu_getIndex2(j,i,3,3)] = localcov;
+    }
+}
+
+int isScaleOf(double *v1, double *v2, int s)
+{
+  double factor;
+  for (int i=0; i<s; i++)
+    if (v1[i])
+    {
+      factor = v2[i]/v1[i];
+      break;
+    }
+  for (int i=0; i<s; i++)
+    if (v1[i]*factor != v2[i])
+      return 0;
+  return 1;
+}
+
+//for symmetric 3x3 matrix
+void computeEigenVec(double *matrix, double eigval, double *eigvec)
+{
+  double matrixtmp[9];
+  memcpy(matrixtmp,matrix,sizeof(double)*9);
+  for (int i=0; i<3; i++)
+    matrixtmp[cu_getIndex2(i,i,3,3)] = matrixtmp[cu_getIndex2(i,i,3,3)] - eigval;
+
+  double col1[3], col2[3];
+  int ind = 0;
+  for (ind = 0; ind<3; ind++)
+  {
+    if (matrixtmp[cu_getIndex2(0,ind,3,3)] || matrixtmp[cu_getIndex2(1,ind,3,3)] || matrixtmp[cu_getIndex2(2,ind,3,3)])
+      break;
+  }
+  if (ind<3)
+  {
+    for (int i=0; i<3; i++)
+      col1[i] = matrixtmp[cu_getIndex2(i,ind,3,3)];
+    int ind2;
+    for (ind2 = ind+1; ind2<3; ind2++)
+    {
+      if (matrixtmp[cu_getIndex2(0,ind2,3,3)] || matrixtmp[cu_getIndex2(1,ind2,3,3)] || matrixtmp[cu_getIndex2(2,ind2,3,3)])
+        break;   
+    }
+    if (ind2<3)
+    {
+      for (int i=0; i<3; i++)
+        col2[i] = matrixtmp[cu_getIndex2(i,ind2,3,3)];
+      if (isScaleOf(col1,col2,3))
+      {
+        ind2++;
+        if (ind2<3)
+        {
+          if (matrixtmp[cu_getIndex2(0,ind2,3,3)] || matrixtmp[cu_getIndex2(1,ind2,3,3)] || matrixtmp[cu_getIndex2(2,ind2,3,3)])
+          {
+            for (int i=0; i<3; i++)
+              col2[i] = matrixtmp[cu_getIndex2(i,ind2,3,3)];
+            if (isScaleOf(col1,col2,3))
+            {
+              double tmp[3];
+              memcpy(tmp,col1,sizeof(double)*3);
+              tmp[0]++;
+              double tmp2[3];
+              cross(col1,tmp,tmp2);
+              cross(tmp2,col1,eigvec);
+            }
+            else
+            {
+              cross(col1,col2,eigvec);
+            }
+          }
+          else
+          {
+            double tmp[3];
+            memcpy(tmp,col1,sizeof(double)*3);
+            tmp[0]++;
+            double tmp2[3];
+            cross(col1,tmp,tmp2);
+            cross(tmp2,col1,eigvec);
+          }
+        }
+        else
+        {
+          double tmp[3];
+          memcpy(tmp,col1,sizeof(double)*3);
+          tmp[0]++;
+          double tmp2[3];
+          cross(col1,tmp,tmp2);
+          cross(tmp2,col1,eigvec);
+        }
+      }
+      else
+      {
+        cross(col1,col2,eigvec);
+      }
+    }
+    else
+    {
+      double tmp[3];
+      memcpy(tmp,col1,sizeof(double)*3);
+      tmp[0]++;
+      double tmp2[3];
+      cross(col1,tmp,tmp2);
+      cross(tmp2,col1,eigvec);
+    }
+  }
+  else
+  {
+    eigvec[0] = eigvec[1] = eigvec[2] = 1;
+  }
+  normalize(eigvec,3);
 }
 
 void drawCircle(unsigned char *img, int s0, int s1, int s2, int drawchan, int c1, int c2, double rad)
@@ -1378,6 +1516,21 @@ main(int argc, const char **argv) {
   for (int i=0; i<countline; i++)
     printf("%d %f %f %f\n", arr_nameid[i], arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2]);
 
+
+  //computing PCA
+  double cov[9];
+  computeCovariance(arr_center,countline,cov);
+  double eigval[3];
+  eigenOfHess(cov,eigval);
+  double seigval = eigval[0];
+  for (int i=1; i<3; i++)
+    if (seigval>eigval[i])
+      seigval = eigval[i];
+  double eigenvec[3];
+
+  computeEigenVec(cov,seigval,eigenvec);
+  printf("eigenvector is (%f,%f,%f)\n", eigenvec[0],eigenvec[1],eigenvec[2]);
+
   for (count = 1; count<countline-2; count++)
   {
     //infile >> curnameind;
@@ -1408,11 +1561,13 @@ main(int argc, const char **argv) {
     printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
 
     memcpy(FT,dr,sizeof(double)*3);
-    double crossddrdr[3];
-    cross(ddr,dr,crossddrdr);
-    cross(dr,crossddrdr,FN);
+    //double crossddrdr[3];
+    //cross(ddr,dr,crossddrdr);
+    //cross(dr,crossddrdr,FN);
+    memcpy(FN,eigenvec,sizeof(double)*3);
     normalize(FN,3);
     cross(FT,FN,FB);
+    cross(FB,FT,FN);
     memcpy(dir1,FN,sizeof(double)*3);
     memcpy(dir2,FB,sizeof(double)*3);
     printf("N = %f %f %f, B = %f %f %f, T = %f %f %f, dotNB = %f, dotNT = %f, dotBT = %f\n",FN[0],FN[1],FN[2],FB[0],FB[1],FB[2],FT[0],FT[1],FT[2],

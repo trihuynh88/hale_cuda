@@ -801,6 +801,25 @@ void drawCircle(unsigned char *img, int s0, int s1, int s2, int drawchan, int c1
   }
 }
 
+void drawCross(unsigned char *img, int s0, int s1, int s2, int drawchan, int c1, int c2, double rad)
+{
+  for (int i=c1-rad; i<c1+rad; i++)
+    img[c2*s1*s0 + i*s0 + drawchan] = 255;  
+  for (int i=c2-rad; i<c2+rad; i++)
+    img[i*s1*s0 + c1*s0 + drawchan] = 255;  
+}
+
+void drawCrossWithColor(unsigned char *img, int s0, int s1, int s2, int c1, int c2, double rad, unsigned char *color)
+{
+  for (int k = 0; k<3; k++)
+  {
+    for (int i=c1-rad; i<c1+rad; i++)
+      img[c2*s1*s0 + i*s0 + k] = color[k];  
+    for (int i=c2-rad; i<c2+rad; i++)
+      img[i*s1*s0 + c1*s0 + k] = color[k];  
+  }
+}
+
 //draw the first N circles on the grid of RxC
 void drawNCircle(unsigned char *img, int s0, int s1, int s2, int drawchan, int N, int g1, int g2)
 {
@@ -1854,6 +1873,39 @@ main(int argc, const char **argv) {
     */
     
     drawCircle(imageQuantized,4,size[0],size[1],1,size[0]/2,size[1]/2,20);
+    double trackedcenter[3];
+    trackedcenter[0] = arr_center[count*3];
+    trackedcenter[1] = arr_center[count*3+1];
+    trackedcenter[2] = arr_center[count*3+2];
+    double centerdiff[3];
+    subtractVec(trackedcenter,center,centerdiff,3);
+    double coorfn, coorfb, coorft;
+    coorfn = dotProduct(centerdiff,FN,3);
+    coorfb = dotProduct(centerdiff,FB,3);
+    coorft = dotProduct(centerdiff,FT,3);
+    unsigned char color[3];
+    color[0] = color[1] = color[2] = 128;
+    if (coorft<-swidth/2 || coorft>swidth/2)
+    {
+      color[0] = color[1] = color[2] = 0;
+    }
+    else
+    {
+      if (coorft<0)
+      {        
+        color[0] = lerp(128,255,0,coorft,-swidth/2);
+        color[1] = lerp(128,255,0,coorft,-swidth/2);
+        color[2] = lerp(128,0,0,coorft,-swidth/2);
+      }
+      else
+      {
+        color[0] = lerp(128,0,0,coorft,swidth/2);
+        color[1] = lerp(128,0,0,coorft,swidth/2);
+        color[2] = lerp(128,255,0,coorft,swidth/2);
+      }
+    }
+    drawCrossWithColor(imageQuantized,4,size[0],size[1],size[0]/2+coorfn,size[1]/2+coorfb,20,color);
+    //drawCross(imageQuantized,4,size[0],size[1],2,size[0]/2,size[1]/2,20);
 //end of cuda_rendering
 
     //sprintf(outnameslice,"cpr_seq_%d.tga",curnameind);

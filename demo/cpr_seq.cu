@@ -1054,10 +1054,12 @@ main(int argc, const char **argv) {
 
   double thresdis = 1.0;
   vector<double> vcenter;
+  vector<int> vnameid;
 
   vcenter.push_back(arr_center[0]);
   vcenter.push_back(arr_center[1]);
   vcenter.push_back(arr_center[2]);
+  vnameid.push_back(arr_nameid[0]);
 
   double thresang = 150;
   //correction by thresholding distance
@@ -1074,12 +1076,14 @@ main(int argc, const char **argv) {
       vcenter.push_back(arr_center[i*3+0]);
       vcenter.push_back(arr_center[i*3+1]);
       vcenter.push_back(arr_center[i*3+2]);
-      countv = vcenter.size()/3;
-      arr_nameid[countv-1] = arr_nameid[i];
+      //countv = vcenter.size()/3;
+      //arr_nameid[countv-1] = arr_nameid[i];
+      vnameid.push_back(arr_nameid[i]);
     }
   }
   countline = vcenter.size()/3;
   memcpy(arr_center,vcenter.data(),sizeof(double)*countline*3);
+  memcpy(arr_nameid,vnameid.data(),sizeof(int)*countline);
   
 
   //correction by thresholding angle
@@ -1090,6 +1094,11 @@ main(int argc, const char **argv) {
   vcenter.push_back(arr_center[3]);
   vcenter.push_back(arr_center[4]);
   vcenter.push_back(arr_center[5]);
+
+  vnameid.clear();
+  vnameid.push_back(arr_nameid[0]);
+  vnameid.push_back(arr_nameid[1]);
+
   double prevec[3];
   prevec[0] = arr_center[3]-arr_center[0];
   prevec[1] = arr_center[4]-arr_center[1];
@@ -1109,11 +1118,41 @@ main(int argc, const char **argv) {
     vcenter.push_back(arr_center[i*3+0]);
     vcenter.push_back(arr_center[i*3+1]);
     vcenter.push_back(arr_center[i*3+2]);
+    vnameid.push_back(arr_nameid[i]);
   }
 
+  //adding more vertices at the beginning and ending to have enough convolution points
+  /*
+  double firstpoint[3];
+  firstpoint[0] = vcenter[0];
+  firstpoint[1] = vcenter[1];
+  firstpoint[2] = vcenter[2];
+  int firstnameid = vnameid[0];
+  double lastpoint[3];
+  lastpoint[0] = vcenter[vcenter.size()-3];
+  lastpoint[1] = vcenter[vcenter.size()-2];
+  lastpoint[2] = vcenter[vcenter.size()-1];
+  int lastnameid = vnameid[vnameid.size()-1];
+
+
+  vcenter.insert(vcenter.begin(),firstpoint[2]);
+  vcenter.insert(vcenter.begin(),firstpoint[1]);
+  vcenter.insert(vcenter.begin(),firstpoint[0]);
+  vnameid.insert(vnameid.begin(),firstnameid);
+
+  vcenter.push_back(lastpoint[0]);
+  vcenter.push_back(lastpoint[1]);
+  vcenter.push_back(lastpoint[2]);
+  vcenter.push_back(lastpoint[0]);
+  vcenter.push_back(lastpoint[1]);
+  vcenter.push_back(lastpoint[2]);
+  vnameid.push_back(lastnameid);
+  vnameid.push_back(lastnameid);
+  */
   printf("after correcting input\n");
   countline = vcenter.size()/3;
   memcpy(arr_center,vcenter.data(),sizeof(double)*countline*3);
+  memcpy(arr_nameid,vnameid.data(),sizeof(int)*countline);
 
   outdata = new short[size[0]*size[1]*countline];
 
@@ -1157,7 +1196,7 @@ main(int argc, const char **argv) {
   camsize[1] = 500;
   
   Hale::init();
-  Hale::debugging = 1;
+  //Hale::debugging = 1;
   Hale::Scene scene;
   /* then create viewer (in order to create the OpenGL context) */
   Hale::Viewer viewer(camsize[0], camsize[1], "Viewer1", &scene);
@@ -1207,11 +1246,13 @@ main(int argc, const char **argv) {
   newprog2->link(); 
   */
   //adding some points outside of the valid convolution range
+  double spherescale = 0.4;
+  /*
   int pointind[3];
   pointind[0] = 0;
   pointind[1] = countline-1;
   pointind[2] = countline-2;
-  double spherescale = 0.4;
+  
   for (int i=0; i<3; i++)
   {
     limnPolyData *lpld2 = limnPolyDataNew();
@@ -1237,11 +1278,12 @@ main(int argc, const char **argv) {
 
     scene.add(hpld2);   
   }
+  */
 
   //test LineStrip
   //viewer2.current();
   int density = 10; //how many points per one unit length in index-space
-  int countls = 3;
+  int countls = 0;
   for (int i=1; i<countline-3; i++)
   {
     double dis = sqrt(diss2P(arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2],
@@ -1258,6 +1300,7 @@ main(int argc, const char **argv) {
     lpld3->indx[i] = i;
   }
   */
+  /*
   {
     int i = 0; int j = 0;
     ELL_4V_SET(lpld3->xyzw + 4*j, arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2], 1.0);  
@@ -1269,7 +1312,8 @@ main(int argc, const char **argv) {
     ELL_4V_SET(lpld3->xyzw + 4*j, arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2], 1.0);  
     lpld3->indx[j] = j;
   }
-  int cpointind = 1;
+  */
+  int cpointind = 0;
   for (int i=1; i<countline-3; i++)
   {
     double dis = sqrt(diss2P(arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2],
@@ -1327,14 +1371,23 @@ main(int argc, const char **argv) {
   imageQuantized = new unsigned char[size[0]*size[1]*4];
   double prevFT[3], prevFN[3], prevFB[3];
 
+  printf("countline after adding boundary points = %d\n", countline);
+  printf("arr_nameid[1] = %d\n", arr_nameid[1]);
+  printf("arr_nameid[countline-3] = %d\n", arr_nameid[countline-3]);
+  printf("New nameid and centers:\n");
+  for (int i=0; i<countline; i++)
+    printf("%d %f %f %f\n", arr_nameid[i], arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2]);
+
   for (count = 1; count<countline-2; count++)
   {
     //infile >> curnameind;
     //infile >> center[0] >> center[1] >> center[2];
     curnameind = arr_nameid[count];
-    center[0] = arr_center[count*3];
-    center[1] = arr_center[count*3+1];
-    center[2] = arr_center[count*3+2];
+    //center[0] = arr_center[count*3];
+    //center[1] = arr_center[count*3+1];
+    //center[2] = arr_center[count*3+2];
+    for (int i=0; i<3; i++)
+      center[i] = cubicFilter<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
     
     double FT[3];
     double FN[3],FB[3];
@@ -1346,8 +1399,13 @@ main(int argc, const char **argv) {
     for (int i=0; i<3; i++)
       ddr[i] = cubicFilter_GG<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
+    printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
+    printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
     normalize(dr,3);
     normalize(ddr,3);
+    printf("after normalizing\n");
+    printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
+    printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
 
     memcpy(FT,dr,sizeof(double)*3);
     double crossddrdr[3];

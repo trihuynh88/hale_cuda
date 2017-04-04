@@ -605,7 +605,7 @@ void cross(double *u, double *v, double *w)
 //currently working in index-space
 //do MIP for a small slice around each point
 __global__
-void kernel_cpr(int* dim, int *size, double *center, double *dir1, double *dir2, double swidth, double sstep, int nOutChannel, double* imageDouble
+void kernel_cpr(int* dim, int *size, double verextent, double *center, double *dir1, double *dir2, double swidth, double sstep, int nOutChannel, double* imageDouble
         )
 {
     int i = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -614,11 +614,12 @@ void kernel_cpr(int* dim, int *size, double *center, double *dir1, double *dir2,
     if ((i>=size[0]) || (j>=size[1]))
         return;
 
+    double pixsize = verextent/size[1];
     int ni = i-size[0]/2;
     int nj = size[1]/2 - j;
     double pointi[3];
-    advancePoint(center,dir1,ni,pointi);
-    advancePoint(pointi,dir2,nj,pointi);
+    advancePoint(center,dir1,ni*pixsize,pointi);
+    advancePoint(pointi,dir2,nj*pixsize,pointi);
 
     double mipdir[3];
     cross(dir1,dir2,mipdir);
@@ -1137,7 +1138,7 @@ main(int argc, const char **argv) {
   double swidth, sstep; //width and step to take inside the slice  
   short *outdata;
   char outnameslice[100];
-
+  double verextent; //vertical extent to project MIP
 
 
   /* boilerplate hest code */
@@ -1156,6 +1157,9 @@ main(int argc, const char **argv) {
 
   hestOptAdd(&hopt, "isize", "sx sy", airTypeInt, 2, 2, size, "200 200",
              "output image sizes");
+
+  hestOptAdd(&hopt, "vex", "ve", airTypeDouble, 1, 1, &verextent, "200",
+             "vertical extent in projecting MIP");
 
   hestOptAdd(&hopt, "dir1", "x y z", airTypeDouble, 3, 3, dir1, "1 0 0",
              "first direction of the generated image");
@@ -1834,7 +1838,7 @@ main(int argc, const char **argv) {
     dim3 threadsPerBlock(numThread1D,numThread1D);
     dim3 numBlocks((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
-    kernel_cpr<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+    kernel_cpr<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
     cudaError_t errCu = cudaGetLastError();
     if (errCu != cudaSuccess) 

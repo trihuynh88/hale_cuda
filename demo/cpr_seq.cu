@@ -2023,7 +2023,7 @@ main(int argc, const char **argv) {
   render(&viewer2);
   printf("after rendering viewer2\n");
   viewer.current();
-
+  viewer.verbose(3);
 
   
 
@@ -2068,7 +2068,14 @@ main(int argc, const char **argv) {
           scene.add(vtexture[i]);
       }
     }
+    viewer.current();
     render(&viewer);
+    viewer2.current();
+    render(&viewer2);
+    viewer.current();
+    printf("end of an event loop\n");
+    printf("viewer: buffer = %d %d, window = %d %d\n", viewer.widthBuffer(), viewer.heightBuffer(), viewer.width(), viewer.height());
+    printf("viewer2: buffer = %d %d, window = %d %d\n", viewer2.widthBuffer(), viewer2.heightBuffer(), viewer2.width(), viewer2.height());
   }
 
   /* clean exit; all okay */

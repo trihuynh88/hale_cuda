@@ -334,6 +334,10 @@ class Viewer {
   int getKeyPressed();
   GLFWwindow* getGLFWwindow();
 
+  //debug - Tri
+  int widthBuffer() {return _widthBuffer;};
+  int heightBuffer() {return _heightBuffer;};
+
  protected:
   glm::vec3 _lightDir;
   bool _button[2];     // true iff button (left:0, right:1) is down

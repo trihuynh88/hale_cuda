@@ -130,7 +130,8 @@ void
 Viewer::framebufferSizeCB(GLFWwindow *gwin, int newWidth, int newHeight) {
   static const char me[]="framebufferSizeCB";
   Viewer *vwr = static_cast<Viewer*>(glfwGetWindowUserPointer(gwin));
-
+  vwr->current();
+  printf("vwr pointer = %d\n",vwr);
   if (vwr->verbose() > 1) {
     printf("%s(%d,%d)\n", me, newWidth, newHeight);
   }

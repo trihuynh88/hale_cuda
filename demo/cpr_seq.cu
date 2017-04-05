@@ -1523,6 +1523,23 @@ main(int argc, const char **argv) {
   lpld3->icnt[0] = countls;
 
   printf("countls = %d\n", countls);
+
+
+  //adding linestrip for original path
+  limnPolyData *lpldorig = limnPolyDataNew();
+  limnPolyDataAlloc(lpldorig, 0, countline-3, countline-3, 1);
+  for (int i=1; i<countline-2; i++)
+  {
+    ELL_4V_SET(lpldorig->xyzw + 4*(i-1), arr_center[(i)*3+0],arr_center[(i)*3+1],arr_center[(i)*3+2], 1.0); 
+    lpldorig->indx[i-1] = i-1;
+  }
+  lpldorig->type[0] = limnPrimitiveLineStrip;
+  lpldorig->icnt[0] = countline-3;
+  Hale::Polydata *hpldorig = new Hale::Polydata(lpldorig, true,
+                         Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+                         "LineStrip");  
+  hpldorig->colorSolid(1.0,1.0,0.5);
+  scene.add(hpldorig);
   //viewer.current();
   /*
   ELL_4V_SET(lpld3->xyzw + 4*0, arr_center[0*3+0], arr_center[0*3+1], arr_center[0*3+2], 1.0);
@@ -1555,6 +1572,8 @@ main(int argc, const char **argv) {
 
   vector<Hale::Polydata *> vtexture;
   vector<Hale::Polydata *> vtexture2;
+  vector<Hale::Polydata *> vsphere;
+  vector<Hale::Polydata *> vsphereorig;
   unsigned char *imageQuantized;
   imageQuantized = new unsigned char[size[0]*size[1]*4];
   double prevFT[3], prevFN[3], prevFB[3];
@@ -1682,7 +1701,7 @@ main(int argc, const char **argv) {
 
 
     
-//add a sphere
+    //add a sphere
     limnPolyData *lpld2 = limnPolyDataNew();
     limnPolyDataIcoSphere(lpld2, 1 << limnPolyDataInfoNorm, 3);
 
@@ -1705,6 +1724,28 @@ main(int argc, const char **argv) {
     hpld2->model(fmat2);    
 
     scene.add(hpld2);    
+
+    //adding sphere for original track path too
+    limnPolyData *lpldorigsp = limnPolyDataNew();
+    limnPolyDataIcoSphere(lpldorigsp, 1 << limnPolyDataInfoNorm, 3);
+
+    Hale::Polydata *hpldorigsp = new Hale::Polydata(lpldorigsp, true,
+                         Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+                         "IcoSphere");
+    hpldorigsp->colorSolid(lerp(0,1,0,count,countline-1),lerp(1,0,0,count,countline-1),0.5);
+    
+    fmat2[0][0] = spherescale;
+    fmat2[1][1] = spherescale;
+    fmat2[2][2] = spherescale;
+    fmat2[3][0] = arr_center[(count)*3+0];
+    fmat2[3][1] = arr_center[(count)*3+1];
+    fmat2[3][2] = arr_center[(count)*3+2];
+    fmat2[3][3] = 1;
+
+    hpldorigsp->model(fmat2);    
+
+    scene.add(hpldorigsp);        
+    vsphereorig.push_back(hpldorigsp);
     
     printf("after adding hpld to scene\n");
 
@@ -2283,6 +2324,7 @@ main(int argc, const char **argv) {
 
   bool stateBKey = false;
   bool stateMKey = false;
+  bool stateNKey = false;
   while(!Hale::finishing){
     glfwWaitEvents();
     int keyPressed = viewer.getKeyPressed();
@@ -2312,6 +2354,22 @@ main(int argc, const char **argv) {
       {
         for (int i=0; i<vtexture.size(); i++)
           scene.add(vtexture[i]);
+      }
+    }
+    if (keyPressed == 'N')
+    {
+      stateNKey = !stateNKey;
+      if (stateNKey)
+      {
+        for (int i=0; i<vsphereorig.size(); i++)
+          scene.remove(vsphereorig[i]);
+        scene.remove(hpldorig);
+      }
+      else
+      {
+        for (int i=0; i<vsphereorig.size(); i++)
+          scene.add(vsphereorig[i]);
+        scene.add(hpldorig);
       }
     }
     viewer.current();

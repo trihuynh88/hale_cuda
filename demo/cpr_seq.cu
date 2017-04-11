@@ -677,8 +677,9 @@ void kernel_cpr(int* dim, int *size, double verextent, double *center, double *d
       curpoint[2] = curpoint[2] + mipdir[2]*sstep;
     }
         
-    imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = mipval;
-    for (int k=1; k<nOutChannel-1; k++)
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = 0;
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = mipval;
+    for (int k=2; k<nOutChannel-1; k++)
       imageDouble[j*size[0]*nOutChannel+i*nOutChannel+k] = 0;
     imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = 1;   
 }
@@ -1927,11 +1928,11 @@ main(int argc, const char **argv) {
     short width = size[0];
     short height = size[1];
 
-    copyImageChannel<double,short>(imageDouble,4,size[0],size[1],0,outdata+count*size[0]*size[1],1,0);
+    copyImageChannel<double,short>(imageDouble,4,size[0],size[1],1,outdata+count*size[0]*size[1],1,0);
     
     quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
     setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
-    drawNCircle(imageQuantized,4,size[0],size[1],1, count, countline/2,countline/2);
+    drawNCircle(imageQuantized,4,size[0],size[1],0, count, countline/2,countline/2);
 
     hpld->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
     scene.add(hpld);
@@ -1950,7 +1951,7 @@ main(int argc, const char **argv) {
     vtexture2.push_back(hpldv2);
     */
     
-    drawCircle(imageQuantized,4,size[0],size[1],1,size[0]/2,size[1]/2,20);
+    drawCircle(imageQuantized,4,size[0],size[1],0,size[0]/2,size[1]/2,20);
     double trackedcenter[3];
     trackedcenter[0] = arr_center[count*3];
     trackedcenter[1] = arr_center[count*3+1];
@@ -2241,7 +2242,7 @@ main(int argc, const char **argv) {
     short width = size[0];
     short height = size[1];
 
-    copyImageChannel<double,short>(imageDouble,4,size[0],size[1],0,outdata+count*size[0]*size[1],1,0);
+    copyImageChannel<double,short>(imageDouble,4,size[0],size[1],1,outdata+count*size[0]*size[1],1,0);
     
     quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
     setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);

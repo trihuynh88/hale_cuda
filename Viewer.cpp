@@ -878,4 +878,26 @@ GLFWwindow* Viewer::getGLFWwindow()
   return _window;
 }
 
+int Viewer::getMode()
+{
+  return _mode;
+}
+
+bool Viewer::getButton(int index)
+{
+  if (index>1)
+    return false;
+  return _button[index];
+}
+
+double Viewer::getLastX()
+{
+  return _lastX;
+}
+
+double Viewer::getLastY()
+{
+  return _lastY;
+}
+
 } // namespace Hale

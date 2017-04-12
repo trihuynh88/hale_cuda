@@ -333,8 +333,11 @@ class Viewer {
   bool getStateBKey();
   int getKeyPressed();
   GLFWwindow* getGLFWwindow();
+  int getMode();
+  bool getButton(int index);
+  double getLastX();
+  double getLastY();
 
-  //debug - Tri
   int widthBuffer() {return _widthBuffer;};
   int heightBuffer() {return _heightBuffer;};
 

@@ -1167,7 +1167,7 @@ main(int argc, const char **argv) {
   short *outdata;
   char outnameslice[100];
   double verextent; //vertical extent to project MIP
-
+  char *pathprefix;
 
   /* boilerplate hest code */
   me = argv[0];
@@ -1203,7 +1203,8 @@ main(int argc, const char **argv) {
 
   //hestOptAdd(&hopt, "center", "x y z", airTypeDouble, 3, 3, center, "366.653991263 89.6381792864 104.736646409",
   //           "center of the generated image");
-  hestOptAdd(&hopt, "i", "name", airTypeString, 1, 1, &centername, "coord_newtrack_pioneer", "name of files centaining centers");
+  hestOptAdd(&hopt, "i", "name", airTypeString, 1, 1, &centername, "coord_newtrack_pioneer.txt", "name of files centaining centers");
+  hestOptAdd(&hopt, "pref", "path", airTypeString, 1, 1, &pathprefix, "/media/trihuynh/781B8CE3469A7908/scivisdata", "prefix of the path to the folder containing data files");
 
   hestOptAdd(&hopt, "o", "name", airTypeString, 1, 1, &outname, "cpr.nrrd", "name of output image");
 
@@ -1220,6 +1221,7 @@ main(int argc, const char **argv) {
   ifstream infile(centername);
   int *arr_nameid;
   double *arr_center;
+  //sprintf(pathprefix,"%s","/media/trihuynh/781B8CE3469A7908/scivisdata/helix");
 
   while (std::getline(infile, line))
   {
@@ -1754,7 +1756,8 @@ main(int argc, const char **argv) {
 
 
     cout<<"Before read in file, with curnameind = "<<curnameind<<", center = "<<center[0]<<" "<<center[1]<<" "<<center[2]<<endl;
-    sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
+    //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
+    sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
     cout<<"inname = "<<inname<<endl;
 
     if (nrrdLoad(nin, inname, NULL)) {
@@ -2042,7 +2045,8 @@ main(int argc, const char **argv) {
     //find lerping between 2 volumes
     count = 1;
     curnameind = arr_nameid[count];
-    sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
+    //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
+    sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
     if (nrrdLoad(nin, inname, NULL)) {
       err = biffGetDone(NRRD);
       fprintf(stderr, "%s: trouble reading \"%s\":\n%s", me, inname, err);
@@ -2113,7 +2117,8 @@ main(int argc, const char **argv) {
     //read second file
     count = 2;
     curnameind = arr_nameid[count];
-    sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
+    //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
+    sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
     if (nrrdLoad(nin, inname, NULL)) {
       err = biffGetDone(NRRD);
       fprintf(stderr, "%s: trouble reading \"%s\":\n%s", me, inname, err);

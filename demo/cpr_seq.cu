@@ -1973,10 +1973,11 @@ main(int argc, const char **argv) {
     }
     else
     {
+      /*
       if (coorft<0)
       {        
         color[0] = lerp(128,255,0,coorft,-swidth/2);
-        color[1] = lerp(128,255,0,coorft,-swidth/2);
+        color[1] = lerp(128,0,0,coorft,-swidth/2);
         color[2] = lerp(128,0,0,coorft,-swidth/2);
       }
       else
@@ -1985,8 +1986,12 @@ main(int argc, const char **argv) {
         color[1] = lerp(128,0,0,coorft,swidth/2);
         color[2] = lerp(128,255,0,coorft,swidth/2);
       }
+      */
+      color[0] = lerp(255,0,-swidth/2,coorft,swidth/2);
+      color[1] = lerp(0,0,-swidth/2,coorft,swidth/2);
+      color[2] = lerp(0,255,-swidth/2,coorft,swidth/2);
     }
-    drawCrossWithColor(imageQuantized,4,size[0],size[1],size[0]/2+coorfn,size[1]/2+coorfb,20,color);
+    drawCrossWithColor(imageQuantized,4,size[0],size[1],size[0]/2+coorfn*size[1]/verextent,size[1]/2+coorfb*size[1]/verextent,20,color);
     //drawCross(imageQuantized,4,size[0],size[1],2,size[0]/2,size[1]/2,20);
 //end of cuda_rendering
 

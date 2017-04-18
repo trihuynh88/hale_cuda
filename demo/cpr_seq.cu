@@ -2329,9 +2329,30 @@ main(int argc, const char **argv) {
   scene.drawInit();
   printf("after scene.drawInit()\n");
   render(&viewer);
+  //viewer.draw();
+  
   printf("after render(&viewer)\n");
 
+  //getting Z-buffer
+  printf("viewer: width = %d, height = %d, widthBuffer = %d, heightBuffer = %d\n", viewer.width(),viewer.height(),viewer.widthBuffer(),viewer.heightBuffer());
+  GLfloat* zbuffer = new GLfloat[viewer.widthBuffer()*viewer.heightBuffer()];
 
+  glReadPixels(0,0,viewer.widthBuffer(),viewer.heightBuffer(),GL_DEPTH_COMPONENT,GL_FLOAT,zbuffer);  
+  printf("Z-buffer\n");
+
+  float minz=1000,maxz=-1000;
+  for (int i=0; i<viewer.widthBuffer()*viewer.heightBuffer(); i++)
+  {
+    zbuffer[i] = linearizeDepthOrtho(lerp(-1,1,0,zbuffer[i],1),viewer.camera.clipNear(),viewer.camera.clipFar());
+    if (zbuffer[i]<minz)
+        minz = zbuffer[i];
+    if (zbuffer[i]>maxz)
+        maxz = zbuffer[i];
+  }
+  printf("minmaxz = (%f,%f)\n",minz,maxz );
+  saveImage<GLfloat>(viewer.widthBuffer(),viewer.heightBuffer(),1,zbuffer,"depth.tga");
+    //printf("%f ", zbuffer[i]);  
+  //viewer.bufferSwap();
 
   bool stateBKey = false;
   bool stateMKey = false;

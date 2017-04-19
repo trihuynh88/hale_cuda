@@ -453,6 +453,9 @@ Viewer::mouseButtonCB(GLFWwindow *gwin, int button, int action, int mods) {
     printf("  @ (%g,%g) -> (%g,%g) -> %s\n", xpos, ypos, xf, yf,
            airEnumStr(viewerMode, vwr->_mode));
   }
+  //Tri test
+  vwr->_lastX = xpos;
+  vwr->_lastY = ypos;
   return;
 }
 

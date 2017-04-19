@@ -1128,6 +1128,31 @@ void render(Hale::Viewer *viewer){
   viewer->bufferSwap();
 }
 
+glm::vec4 convertDepthBuffToWorldPos(int w, int h, double depth, Hale::Viewer *viewer)
+{
+  double depthv = linearizeDepthOrtho(lerp(-1,1,0,depth,1),viewer->camera.clipNear(),viewer->camera.clipFar());
+  double wv, hv;
+  wv = w-viewer->widthBuffer()/2;
+  hv = h-viewer->heightBuffer()/2;
+
+  glm::vec3 diff = viewer->camera.at() - viewer->camera.from();
+  double dist = glm::length(diff);
+  double fangle = viewer->camera.fov()*AIR_PI/360;
+  double vextent = dist*tan(fangle)*2;
+  double pixelsize = vextent/viewer->heightBuffer();
+  wv = wv*pixelsize;
+  hv = hv*pixelsize;
+  printf("Inside convertDepthBuffToWorldPos: viewpos = %f,%f,%f\n",wv,hv,depthv);
+  glm::vec4 vpos;
+  vpos.x = wv;
+  vpos.y = hv;
+  vpos.z = depthv;
+  vpos.w = 1;
+  glm::vec4 result;
+  result = viewer->camera.viewInv()*vpos;
+  return result;
+}
+
 int
 main(int argc, const char **argv) {
   const char *me;
@@ -1370,17 +1395,17 @@ main(int argc, const char **argv) {
   float camfr[3], camat[3], camup[3], camnc, camfc, camFOV;
   int camortho;
   unsigned int camsize[2];
-  camfr[0] = arr_center[0];
-  camfr[1] = arr_center[1];
-  camfr[2] = arr_center[2]-50;
-  camat[0] = arr_center[0];
-  camat[1] = arr_center[1];
-  camat[2] = arr_center[2];
+  camfr[0] = arr_center[countline/2*3+0];
+  camfr[1] = arr_center[countline/2*3+1];
+  camfr[2] = arr_center[countline/2*3+2]-5;
+  camat[0] = arr_center[countline/2*3+0];
+  camat[1] = arr_center[countline/2*3+1];
+  camat[2] = arr_center[countline/2*3+2];
   camup[0] = 1;
   camup[1] = 0;
   camup[2] = 0;
-  camnc = -500;
-  camfc = 500;
+  camnc = -10;
+  camfc = 10;
   camFOV = 170;
   camortho = 1;
   camsize[0] = 500;
@@ -1437,7 +1462,8 @@ main(int argc, const char **argv) {
   newprog2->link(); 
   */
   //adding some points outside of the valid convolution range
-  double spherescale = 0.4;
+  double spherescale = 0.2;
+  double spherescale_inter = 0.3;
   /*
   int pointind[3];
   pointind[0] = 0;
@@ -1542,7 +1568,8 @@ main(int argc, const char **argv) {
                          Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
                          "LineStrip");  
   hpldorig->colorSolid(1.0,1.0,0.5);
-  scene.add(hpldorig);
+  //scene.add(hpldorig);
+
   //viewer.current();
   /*
   ELL_4V_SET(lpld3->xyzw + 4*0, arr_center[0*3+0], arr_center[0*3+1], arr_center[0*3+2], 1.0);
@@ -1557,8 +1584,8 @@ main(int argc, const char **argv) {
   limnPolyData *lpld4 = limnPolyDataNew();
   limnPolyDataSpiralTubeWrap(lpld4, lpld3,
                            0, NULL,
-                           50, 10,
-                           0.2);
+                           10, 4,
+                           0.1);
 
   //viewer2.current();
   Hale::Polydata *hpld3 = new Hale::Polydata(lpld3, true,
@@ -1747,7 +1774,7 @@ main(int argc, const char **argv) {
 
     hpldorigsp->model(fmat2);    
 
-    scene.add(hpldorigsp);        
+    //scene.add(hpldorigsp);        
     vsphereorig.push_back(hpldorigsp);
     
     printf("after adding hpld to scene\n");
@@ -1938,7 +1965,7 @@ main(int argc, const char **argv) {
     drawNCircle(imageQuantized,4,size[0],size[1],0, count, countline/2,countline/2);
 
     hpld->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
-    scene.add(hpld);
+    //scene.add(hpld);
     vtexture.push_back(hpld);
 
     //texture in viewer2
@@ -2259,6 +2286,45 @@ main(int argc, const char **argv) {
 
 
     hpldview2->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
+
+
+    //add a sphere for the interpolated position
+    viewer.current();
+    limnPolyData *lpld2 = limnPolyDataNew();
+    limnPolyDataIcoSphere(lpld2, 1 << limnPolyDataInfoNorm, 3);
+
+    Hale::Polydata *hpld_inter = new Hale::Polydata(lpld2, true,
+                         Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+                         "IcoSphere");
+    hpld_inter->colorSolid(0,0,1.0);
+    
+    glm::mat4 fmat2 = glm::mat4();
+    
+    fmat2[0][0] = spherescale_inter;
+    fmat2[1][1] = spherescale_inter;
+    fmat2[2][2] = spherescale_inter;
+    fmat2[3][0] = center[0];
+    fmat2[3][1] = center[1];
+    fmat2[3][2] = center[2];
+    fmat2[3][3] = 1;
+    printf("center of the first interpolated point: %f,%f,%f\n", center[0],center[1],center[2]);
+
+    hpld_inter->model(fmat2);    
+
+    scene.add(hpld_inter);   
+ /*
+    fmat2[0][0] = spherescale;
+    fmat2[1][1] = spherescale;
+    fmat2[2][2] = spherescale;
+    fmat2[3][0] = center[0]+5;
+    fmat2[3][1] = center[1];
+    fmat2[3][2] = center[2];
+    fmat2[3][3] = 1;
+    printf("center of the first interpolated point: %f,%f,%f\n", center[0],center[1],center[2]);
+
+    hpld_inter->model(fmat2);    
+  */
+    viewer2.current();
     /*
     count = 2;
     center[0] = arr_center[count*3];
@@ -2339,6 +2405,20 @@ main(int argc, const char **argv) {
 
   glReadPixels(0,0,viewer.widthBuffer(),viewer.heightBuffer(),GL_DEPTH_COMPONENT,GL_FLOAT,zbuffer);  
   printf("Z-buffer\n");
+
+  int wposw = 56;
+  int hposw = 62;
+  double dposw = zbuffer[hposw*viewer.widthBuffer()+wposw];
+  printf("Before converting: wpos = %d, hpos = %d, dpos = %f\n", wposw,hposw,dposw);
+  glm::vec4 wposworld = convertDepthBuffToWorldPos(wposw,hposw,dposw,&viewer);
+  printf("After converting: x,y,z = %f,%f,%f\n", wposworld.x,wposworld.y,wposworld.z);
+  glm::vec4 vpostest,wpostest;
+  wpostest.x = arr_center[3];
+  wpostest.y = arr_center[4];
+  wpostest.z = arr_center[5];
+  wpostest.w = 1;
+  vpostest = viewer.camera.view()*wpostest;
+  printf("World Pos Test = %f,%f,%f; View Pos Test = %f,%f,%f\n", wpostest.x,wpostest.y,wpostest.z,vpostest.x,vpostest.y,vpostest.z);
 
   float minz=1000,maxz=-1000;
   for (int i=0; i<viewer.widthBuffer()*viewer.heightBuffer(); i++)
@@ -2451,7 +2531,299 @@ main(int argc, const char **argv) {
         printf("Begin zooming: lastY = %f\n",lastY);
       }
 
+    if (viewer.getButton(0))
+    {
+      printf("viewer clicked: %f, %f\n",viewer.getLastX(),viewer.getLastY());
+      GLfloat* zbuffer = new GLfloat[viewer.widthBuffer()*viewer.heightBuffer()];
+      glReadPixels(0,0,viewer.widthBuffer(),viewer.heightBuffer(),GL_DEPTH_COMPONENT,GL_FLOAT,zbuffer);  
+      int wposw = viewer.getLastX();
+      int hposw = viewer.heightBuffer()-viewer.getLastY();
+      double dposw = zbuffer[hposw*viewer.widthBuffer()+wposw];
+      //printf("Before converting: wpos = %d, hpos = %d, dpos = %f\n", wposw,hposw,dposw);
+      glm::vec4 wposworld = convertDepthBuffToWorldPos(wposw,hposw,dposw,&viewer);
+      printf("Clicked World Pos = %f,%f,%f\n", wposworld.x,wposworld.y,wposworld.z);
+      if (dposw<1.0)
+      {
+        double dismin = 1000;
+        int mini = -1;
+        for (int i=1; i<countline-3; i++)
+        {
+          double dis1 = diss2P(wposworld.x,wposworld.y,wposworld.z,arr_center[i*3+0],arr_center[i*3+1],arr_center[i*3+2]);
+          double dis2 = diss2P(wposworld.x,wposworld.y,wposworld.z,arr_center[(i+1)*3+0],arr_center[(i+1)*3+1],arr_center[(i+1)*3+2]);
+          if (dis1+dis2<dismin)
+          {
+            dismin = dis1+dis2;
+            mini = i;
+          }        
+        }
+        int numsample = 20;
+        dismin = 1000;
+        double mint = -1;
+        for (int i=0; i<=numsample; i++)
+        {
+          double t = (double)i/(double)numsample;
+          double center[3];
+          for (int j=0; j<3; j++)
+            center[j] = cubicFilter<double>(t, arr_center[(mini-1)*3+j], arr_center[(mini)*3+j], arr_center[(mini+1)*3+j], arr_center[(mini+2)*3+j]);
+          double dis = diss2P(wposworld.x,wposworld.y,wposworld.z,center[0],center[1],center[2]);
+          if (dis<dismin)
+          {
+            dismin = dis;
+            mint = t;
+          }
+        }
 
+        //find lerping between 2 volumes
+        count = mini;
+        curnameind = arr_nameid[count];
+        //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
+        sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
+        if (nrrdLoad(nin, inname, NULL)) {
+          err = biffGetDone(NRRD);
+          fprintf(stderr, "%s: trouble reading \"%s\":\n%s", me, inname, err);
+          free(err);
+          return;
+        }
+
+        cout<<"read file "<<inname<<endl;
+        unsigned int pixSize;
+        cudaChannelFormatDesc channelDesc;
+        pixSize = sizeof(float);
+        channelDesc = cudaCreateChannelDesc<float>();
+
+        if (3 != nin->dim && 3 != nin->spaceDim) {
+            fprintf(stderr, "%s: need 3D array in 3D space, (not %uD in %uD)\n",
+            argv[0], nin->dim, nin->spaceDim);
+            airMopError(mop); exit(1);
+        }
+
+        int dim[4];
+        if (nin->dim == 3)
+        {
+            dim[0] = 1;
+            dim[1] = nin->axis[0].size;
+            dim[2] = nin->axis[1].size;
+            dim[3] = nin->axis[2].size;
+        }
+        else //4-channel
+        {
+            dim[0] = nin->axis[0].size;
+            dim[1] = nin->axis[1].size;
+            dim[2] = nin->axis[2].size;
+            dim[3] = nin->axis[3].size;
+        }
+        int channel = 1;
+
+        for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
+        {
+            filemem0[i] = ((short*)nin->data)[i*2];
+            filemem1[i] = ((short*)nin->data)[i*2+1];
+        }
+
+        //debug
+        for (int k=0; k<=2; k++)
+          for (int j=0; j<=2; j++)
+            for (int i=0; i<=2; i++)
+              printf("volume 1: at (%d,%d,%d) = %f\n", i,j,k,filemem0[k*dim[1]*dim[2]+j*dim[1]+i]);
+
+        const cudaExtent volumeSize = make_cudaExtent(dim[1], dim[2], dim[3]);
+
+        if (!d_volumeArray0)
+          cudaMalloc3DArray(&d_volumeArray0, &channelDesc, volumeSize);
+
+        cudaMemcpy3DParms copyParams0 = {0};
+        copyParams0.srcPtr   = make_cudaPitchedPtr((void*)filemem0, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
+        copyParams0.dstArray = d_volumeArray0;
+        copyParams0.extent   = volumeSize;
+        copyParams0.kind     = cudaMemcpyHostToDevice;
+        cudaMemcpy3D(&copyParams0);
+
+        tex0.normalized = false;                    
+        tex0.filterMode = cudaFilterModeLinear;     
+        tex0.addressMode[0] = cudaAddressModeBorder;
+        tex0.addressMode[1] = cudaAddressModeBorder;
+        tex0.addressMode[2] = cudaAddressModeBorder;
+        cudaBindTextureToArray(tex0, d_volumeArray0, channelDesc);    
+
+        //read second file
+        count = mini+1;
+        curnameind = arr_nameid[count];
+        //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
+        sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
+        if (nrrdLoad(nin, inname, NULL)) {
+          err = biffGetDone(NRRD);
+          fprintf(stderr, "%s: trouble reading \"%s\":\n%s", me, inname, err);
+          free(err);
+          return;
+        }
+
+        cout<<"read file "<<inname<<endl;
+
+        if (3 != nin->dim && 3 != nin->spaceDim) {
+            fprintf(stderr, "%s: need 3D array in 3D space, (not %uD in %uD)\n",
+            argv[0], nin->dim, nin->spaceDim);
+            airMopError(mop); exit(1);
+        }
+
+        for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
+        {
+            filemem0[i] = ((short*)nin->data)[i*2];
+            filemem1[i] = ((short*)nin->data)[i*2+1];
+        }
+
+        if (!d_volumeArray1)
+          cudaMalloc3DArray(&d_volumeArray1, &channelDesc, volumeSize);
+
+        cudaMemcpy3DParms copyParams1 = {0};
+        copyParams1.srcPtr   = make_cudaPitchedPtr((void*)filemem0, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
+        copyParams1.dstArray = d_volumeArray1;
+        copyParams1.extent   = volumeSize;
+        copyParams1.kind     = cudaMemcpyHostToDevice;
+        cudaMemcpy3D(&copyParams1);
+
+        tex1.normalized = false;                    
+        tex1.filterMode = cudaFilterModeLinear;     
+        tex1.addressMode[0] = cudaAddressModeBorder;
+        tex1.addressMode[1] = cudaAddressModeBorder;
+        tex1.addressMode[2] = cudaAddressModeBorder;
+        cudaBindTextureToArray(tex1, d_volumeArray1, channelDesc);    
+
+        float *d_volmem;
+        cudaMalloc(&d_volmem,sizeof(float)*dim[1]*dim[2]*dim[3]);
+
+        int numThread1D = 8;
+        dim3 threadsPerBlock(numThread1D,numThread1D,numThread1D);
+        dim3 numBlocks((dim[1]+numThread1D-1)/numThread1D,(dim[2]+numThread1D-1)/numThread1D,(dim[3]+numThread1D-1)/numThread1D);
+
+        double alpha = mint;
+        kernel_interpol<<<numBlocks,threadsPerBlock>>>(d_volmem,d_dim,alpha);
+
+        cudaError_t errCu = cudaGetLastError();
+        if (errCu != cudaSuccess) 
+            printf("Error: %s\n", cudaGetErrorString(errCu));
+
+        errCu = cudaDeviceSynchronize();
+        if (errCu != cudaSuccess) 
+            printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+        //copy from device's global mem to texture mem
+        //cudaMemcpy3DParms copyParams0 = {0};
+        copyParams0.srcPtr   = make_cudaPitchedPtr((void*)d_volmem, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
+        copyParams0.dstArray = d_volumeArray0;
+        copyParams0.extent   = volumeSize;
+        copyParams0.kind     = cudaMemcpyDeviceToDevice;
+        cudaMemcpy3D(&copyParams0);
+
+        tex0.normalized = false;                    
+        tex0.filterMode = cudaFilterModeLinear;     
+        tex0.addressMode[0] = cudaAddressModeBorder;
+        tex0.addressMode[1] = cudaAddressModeBorder;
+        tex0.addressMode[2] = cudaAddressModeBorder;
+        cudaBindTextureToArray(tex0, d_volumeArray0, channelDesc);       
+
+        //after that call the normal kernel to do MIP
+        count = mini;
+        for (int i=0; i<3; i++)
+          center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+
+        printf("center = %f %f %f\n", center[0],center[1],center[2]);
+        
+        double FT[3];
+        double FN[3],FB[3];
+        double dr[3],ddr[3];
+        for (int i=0; i<3; i++)
+          dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+
+        for (int i=0; i<3; i++)
+          ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+
+        printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
+        printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
+        normalize(dr,3);
+        normalize(ddr,3);
+        printf("after normalizing\n");
+        printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
+        printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
+
+        memcpy(FT,dr,sizeof(double)*3);
+        memcpy(FN,eigenvec,sizeof(double)*3);
+        normalize(FN,3);
+        cross(FT,FN,FB);
+        cross(FB,FT,FN);
+        memcpy(dir1,FN,sizeof(double)*3);
+        memcpy(dir2,FB,sizeof(double)*3);
+        printf("Interpolation: N = %f %f %f, B = %f %f %f, T = %f %f %f, dotNB = %f, dotNT = %f, dotBT = %f\n",FN[0],FN[1],FN[2],FB[0],FB[1],FB[2],FT[0],FT[1],FT[2],
+          dotProduct(FN,FB,3),dotProduct(FN,FT,3),dotProduct(FB,FT,3));
+
+        cudaMemcpy(d_dir1, dir1, 3*sizeof(double), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_dir2, dir2, 3*sizeof(double), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_center,center,3*sizeof(double), cudaMemcpyHostToDevice);
+
+        numThread1D = 16;
+        dim3 threadsPerBlock2(numThread1D,numThread1D);
+        dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
+
+        kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+
+        errCu = cudaGetLastError();
+        if (errCu != cudaSuccess) 
+            printf("Error: %s\n", cudaGetErrorString(errCu));
+
+        errCu = cudaDeviceSynchronize();
+        if (errCu != cudaSuccess) 
+            printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+        cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+
+        short width = size[0];
+        short height = size[1];
+
+        //copyImageChannel<double,short>(imageDouble,4,size[0],size[1],1,outdata+count*size[0]*size[1],1,0);
+        
+        quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+        setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+
+        viewer2.current();
+        hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+        //hpldview2->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);      
+        //add a sphere for the interpolated position
+        
+        viewer.current();
+        /*
+        limnPolyData *lpld2 = limnPolyDataNew();
+        limnPolyDataIcoSphere(lpld2, 1 << limnPolyDataInfoNorm, 3);
+
+        Hale::Polydata *hpld_inter = new Hale::Polydata(lpld2, true,
+                             Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+                             "IcoSphere");
+        hpld_inter->colorSolid(0,0,1.0);
+        
+        glm::mat4 fmat2 = glm::mat4();
+        
+        fmat2[0][0] = spherescale;
+        fmat2[1][1] = spherescale;
+        fmat2[2][2] = spherescale;
+        fmat2[3][0] = center[0];
+        fmat2[3][1] = center[1];
+        fmat2[3][2] = center[2];
+        fmat2[3][3] = 1;
+        printf("center of the last interpolated point: %f,%f,%f\n", center[0],center[1],center[2]);
+        
+        hpld_inter->model(fmat2);    
+        */
+        //fmat2[3][0] += 3;
+        printf("alpha = %f",alpha);
+        printf("center of the previous interpolated point: %f,%f,%f\n", fmat2[3][0],fmat2[3][1],fmat2[3][2]);
+        printf("center of the last interpolated point: %f,%f,%f\n", center[0],center[1],center[2]);
+        fmat2[3][0] = center[0];
+        fmat2[3][1] = center[1];
+        fmat2[3][2] = center[2];
+        hpld_inter->model(fmat2);
+        //scene.remove(hpld_inter);
+        //scene.add(hpld_inter);   
+        //scene.drawInit();
+      }
+    }
     viewer.current();
     render(&viewer);
     viewer2.current();

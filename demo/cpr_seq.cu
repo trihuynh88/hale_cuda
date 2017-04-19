@@ -648,6 +648,17 @@ void kernel_cpr(int* dim, int *size, double verextent, double *center, double *d
     if ((i>=size[0]) || (j>=size[1]))
         return;
 
+    //debugging
+    /*
+    dir1[0] = 0;
+    dir1[1] = 0;
+    dir1[2] = 1;
+    dir2[0] = 0;
+    dir2[1] = 1;
+    dir2[2] = 0;
+    */
+    //printf("Inside kernel: dot(dir1,dir2) = %f\n",dotProduct(dir1,dir2,3));
+
     double pixsize = verextent/size[1];
     int ni = i-size[0]/2;
     int nj = size[1]/2 - j;
@@ -1670,8 +1681,12 @@ main(int argc, const char **argv) {
     normalize(FN,3);
     cross(FT,FN,FB);
     cross(FB,FT,FN);
+    normalize(FN,3);
+    normalize(FT,3);
+    normalize(FB,3);
     memcpy(dir1,FN,sizeof(double)*3);
     memcpy(dir2,FB,sizeof(double)*3);
+
     printf("N = %f %f %f, B = %f %f %f, T = %f %f %f, dotNB = %f, dotNT = %f, dotBT = %f\n",FN[0],FN[1],FN[2],FB[0],FB[1],FB[2],FT[0],FT[1],FT[2],
       dotProduct(FN,FB,3),dotProduct(FN,FT,3),dotProduct(FB,FT,3));
 

@@ -681,7 +681,8 @@ void kernel_cpr(int* dim, int *size, double verextent, double *center, double *d
     for (k=0; k<ceil(swidth/sstep); k++)
     {
       double curval;
-      curval = tex3DBicubic<float,float>(tex0,curpoint[0],curpoint[1],curpoint[2]);    
+      //curval = tex3DBicubic<float,float>(tex0,curpoint[0],curpoint[1],curpoint[2]);    
+      curval = tex3DBicubic<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);    
       mipval = MAX(mipval,curval);
       curpoint[0] = curpoint[0] + mipdir[0]*sstep;
       curpoint[1] = curpoint[1] + mipdir[1]*sstep;
@@ -1241,6 +1242,7 @@ main(int argc, const char **argv) {
   char outnameslice[100];
   double verextent; //vertical extent to project MIP
   char *pathprefix;
+  int curVolInMem;
 
   /* boilerplate hest code */
   me = argv[0];
@@ -1916,7 +1918,8 @@ main(int argc, const char **argv) {
     //cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float>();
     if (!initalized)
     {
-      cudaMalloc3DArray(&d_volumeArray0, &channelDesc, volumeSize);
+      cudaMalloc3DArray(&d_volumeArray2, &channelDesc, volumeSize);
+      //cudaMalloc3DArray(&d_volumeArray0, &channelDesc, volumeSize);
       //cudaMalloc3DArray(&d_volumeArray1, &channelDesc, volumeSize);
     }
 
@@ -1938,7 +1941,8 @@ main(int argc, const char **argv) {
 
     cudaMemcpy3DParms copyParams0 = {0};
     copyParams0.srcPtr   = make_cudaPitchedPtr((void*)filemem0, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
-    copyParams0.dstArray = d_volumeArray0;
+    //copyParams0.dstArray = d_volumeArray0;
+    copyParams0.dstArray = d_volumeArray2;
     copyParams0.extent   = volumeSize;
     copyParams0.kind     = cudaMemcpyHostToDevice;
     cudaMemcpy3D(&copyParams0);
@@ -1951,18 +1955,18 @@ main(int argc, const char **argv) {
 
 
 
-    tex0.normalized = false;                      // access with normalized texture coordinates
-    tex0.filterMode = cudaFilterModeLinear;      // linear interpolation
+    tex2.normalized = false;                      // access with normalized texture coordinates
+    tex2.filterMode = cudaFilterModeLinear;      // linear interpolation
     /*
     tex0.addressMode[0] = cudaAddressModeWrap;   // wrap texture coordinates
     tex0.addressMode[1] = cudaAddressModeWrap;
     tex0.addressMode[2] = cudaAddressModeWrap;
     */
-    tex0.addressMode[0] = cudaAddressModeBorder;   // wrap texture coordinates
-    tex0.addressMode[1] = cudaAddressModeBorder;
-    tex0.addressMode[2] = cudaAddressModeBorder;
+    tex2.addressMode[0] = cudaAddressModeBorder;   // wrap texture coordinates
+    tex2.addressMode[1] = cudaAddressModeBorder;
+    tex2.addressMode[2] = cudaAddressModeBorder;
     // --- Bind array to 3D texture    
-    cudaBindTextureToArray(tex0, d_volumeArray0, channelDesc);
+    cudaBindTextureToArray(tex2, d_volumeArray2, channelDesc);
     //-----------
 
     nOutChannel = 4;
@@ -2262,17 +2266,17 @@ main(int argc, const char **argv) {
     //copy from device's global mem to texture mem
     //cudaMemcpy3DParms copyParams0 = {0};
     copyParams0.srcPtr   = make_cudaPitchedPtr((void*)d_volmem, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
-    copyParams0.dstArray = d_volumeArray0;
+    copyParams0.dstArray = d_volumeArray2;
     copyParams0.extent   = volumeSize;
     copyParams0.kind     = cudaMemcpyDeviceToDevice;
     cudaMemcpy3D(&copyParams0);
 
-    tex0.normalized = false;                    
-    tex0.filterMode = cudaFilterModeLinear;     
-    tex0.addressMode[0] = cudaAddressModeBorder;
-    tex0.addressMode[1] = cudaAddressModeBorder;
-    tex0.addressMode[2] = cudaAddressModeBorder;
-    cudaBindTextureToArray(tex0, d_volumeArray0, channelDesc);       
+    tex2.normalized = false;                    
+    tex2.filterMode = cudaFilterModeLinear;     
+    tex2.addressMode[0] = cudaAddressModeBorder;
+    tex2.addressMode[1] = cudaAddressModeBorder;
+    tex2.addressMode[2] = cudaAddressModeBorder;
+    cudaBindTextureToArray(tex2, d_volumeArray0, channelDesc);       
 
     //after that call the normal kernel to do MIP
     count = 1;
@@ -2429,6 +2433,7 @@ main(int argc, const char **argv) {
 
     hpldview2->model(fmat);
     */
+  curVolInMem = 1;
     
   scene2.add(hpldview2);
   //scene2.add(hpld3);
@@ -2660,123 +2665,127 @@ main(int argc, const char **argv) {
             }
           }
 
-          //find lerping between 2 volumes
-          count = mini;
-          curnameind = arr_nameid[count];
-          //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
-          sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
-          if (nrrdLoad(nin, inname, NULL)) {
-            err = biffGetDone(NRRD);
-            fprintf(stderr, "%s: trouble reading \"%s\":\n%s", me, inname, err);
-            free(err);
-            return;
-          }
-
-          cout<<"read file "<<inname<<endl;
-          unsigned int pixSize;
-          cudaChannelFormatDesc channelDesc;
-          pixSize = sizeof(float);
-          channelDesc = cudaCreateChannelDesc<float>();
-
-          if (3 != nin->dim && 3 != nin->spaceDim) {
-              fprintf(stderr, "%s: need 3D array in 3D space, (not %uD in %uD)\n",
-              argv[0], nin->dim, nin->spaceDim);
-              airMopError(mop); exit(1);
-          }
-
-          int dim[4];
-          if (nin->dim == 3)
+          if (curVolInMem != mini)
           {
-              dim[0] = 1;
-              dim[1] = nin->axis[0].size;
-              dim[2] = nin->axis[1].size;
-              dim[3] = nin->axis[2].size;
-          }
-          else //4-channel
-          {
-              dim[0] = nin->axis[0].size;
-              dim[1] = nin->axis[1].size;
-              dim[2] = nin->axis[2].size;
-              dim[3] = nin->axis[3].size;
-          }
-          int channel = 1;
+            curVolInMem = mini;
+            //find lerping between 2 volumes
+            count = mini;
+            curnameind = arr_nameid[count];
+            //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
+            sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
+            if (nrrdLoad(nin, inname, NULL)) {
+              err = biffGetDone(NRRD);
+              fprintf(stderr, "%s: trouble reading \"%s\":\n%s", me, inname, err);
+              free(err);
+              return;
+            }
 
-          for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
-          {
-              filemem0[i] = ((short*)nin->data)[i*2];
-              filemem1[i] = ((short*)nin->data)[i*2+1];
-          }
+            cout<<"read file "<<inname<<endl;
+            unsigned int pixSize;
+            cudaChannelFormatDesc channelDesc;
+            pixSize = sizeof(float);
+            channelDesc = cudaCreateChannelDesc<float>();
 
-          //debug
-          for (int k=0; k<=2; k++)
-            for (int j=0; j<=2; j++)
-              for (int i=0; i<=2; i++)
-                printf("volume 1: at (%d,%d,%d) = %f\n", i,j,k,filemem0[k*dim[1]*dim[2]+j*dim[1]+i]);
+            if (3 != nin->dim && 3 != nin->spaceDim) {
+                fprintf(stderr, "%s: need 3D array in 3D space, (not %uD in %uD)\n",
+                argv[0], nin->dim, nin->spaceDim);
+                airMopError(mop); exit(1);
+            }
 
-          const cudaExtent volumeSize = make_cudaExtent(dim[1], dim[2], dim[3]);
+            int dim[4];
+            if (nin->dim == 3)
+            {
+                dim[0] = 1;
+                dim[1] = nin->axis[0].size;
+                dim[2] = nin->axis[1].size;
+                dim[3] = nin->axis[2].size;
+            }
+            else //4-channel
+            {
+                dim[0] = nin->axis[0].size;
+                dim[1] = nin->axis[1].size;
+                dim[2] = nin->axis[2].size;
+                dim[3] = nin->axis[3].size;
+            }
+            int channel = 1;
 
-          if (!d_volumeArray0)
-            cudaMalloc3DArray(&d_volumeArray0, &channelDesc, volumeSize);
+            for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
+            {
+                filemem0[i] = ((short*)nin->data)[i*2];
+                filemem1[i] = ((short*)nin->data)[i*2+1];
+            }
 
-          cudaMemcpy3DParms copyParams0 = {0};
-          copyParams0.srcPtr   = make_cudaPitchedPtr((void*)filemem0, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
-          copyParams0.dstArray = d_volumeArray0;
-          copyParams0.extent   = volumeSize;
-          copyParams0.kind     = cudaMemcpyHostToDevice;
-          cudaMemcpy3D(&copyParams0);
+            //debug
+            for (int k=0; k<=2; k++)
+              for (int j=0; j<=2; j++)
+                for (int i=0; i<=2; i++)
+                  printf("volume 1: at (%d,%d,%d) = %f\n", i,j,k,filemem0[k*dim[1]*dim[2]+j*dim[1]+i]);
 
-          tex0.normalized = false;                    
-          tex0.filterMode = cudaFilterModeLinear;     
-          tex0.addressMode[0] = cudaAddressModeBorder;
-          tex0.addressMode[1] = cudaAddressModeBorder;
-          tex0.addressMode[2] = cudaAddressModeBorder;
-          cudaBindTextureToArray(tex0, d_volumeArray0, channelDesc);    
+            const cudaExtent volumeSize = make_cudaExtent(dim[1], dim[2], dim[3]);
 
-          //read second file
-          count = mini+1;
-          curnameind = arr_nameid[count];
-          //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
-          sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
-          if (nrrdLoad(nin, inname, NULL)) {
-            err = biffGetDone(NRRD);
-            fprintf(stderr, "%s: trouble reading \"%s\":\n%s", me, inname, err);
-            free(err);
-            return;
-          }
+            if (!d_volumeArray0)
+              cudaMalloc3DArray(&d_volumeArray0, &channelDesc, volumeSize);
 
-          cout<<"read file "<<inname<<endl;
+            cudaMemcpy3DParms copyParams0 = {0};
+            copyParams0.srcPtr   = make_cudaPitchedPtr((void*)filemem0, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
+            copyParams0.dstArray = d_volumeArray0;
+            copyParams0.extent   = volumeSize;
+            copyParams0.kind     = cudaMemcpyHostToDevice;
+            cudaMemcpy3D(&copyParams0);
 
-          if (3 != nin->dim && 3 != nin->spaceDim) {
-              fprintf(stderr, "%s: need 3D array in 3D space, (not %uD in %uD)\n",
-              argv[0], nin->dim, nin->spaceDim);
-              airMopError(mop); exit(1);
-          }
+            tex0.normalized = false;                    
+            tex0.filterMode = cudaFilterModeLinear;     
+            tex0.addressMode[0] = cudaAddressModeBorder;
+            tex0.addressMode[1] = cudaAddressModeBorder;
+            tex0.addressMode[2] = cudaAddressModeBorder;
+            cudaBindTextureToArray(tex0, d_volumeArray0, channelDesc);    
 
-          for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
-          {
-              filemem0[i] = ((short*)nin->data)[i*2];
-              filemem1[i] = ((short*)nin->data)[i*2+1];
-          }
+            //read second file
+            count = mini+1;
+            curnameind = arr_nameid[count];
+            //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
+            sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
+            if (nrrdLoad(nin, inname, NULL)) {
+              err = biffGetDone(NRRD);
+              fprintf(stderr, "%s: trouble reading \"%s\":\n%s", me, inname, err);
+              free(err);
+              return;
+            }
 
-          if (!d_volumeArray1)
-            cudaMalloc3DArray(&d_volumeArray1, &channelDesc, volumeSize);
+            cout<<"read file "<<inname<<endl;
 
-          cudaMemcpy3DParms copyParams1 = {0};
-          copyParams1.srcPtr   = make_cudaPitchedPtr((void*)filemem0, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
-          copyParams1.dstArray = d_volumeArray1;
-          copyParams1.extent   = volumeSize;
-          copyParams1.kind     = cudaMemcpyHostToDevice;
-          cudaMemcpy3D(&copyParams1);
+            if (3 != nin->dim && 3 != nin->spaceDim) {
+                fprintf(stderr, "%s: need 3D array in 3D space, (not %uD in %uD)\n",
+                argv[0], nin->dim, nin->spaceDim);
+                airMopError(mop); exit(1);
+            }
 
-          tex1.normalized = false;                    
-          tex1.filterMode = cudaFilterModeLinear;     
-          tex1.addressMode[0] = cudaAddressModeBorder;
-          tex1.addressMode[1] = cudaAddressModeBorder;
-          tex1.addressMode[2] = cudaAddressModeBorder;
-          cudaBindTextureToArray(tex1, d_volumeArray1, channelDesc);    
+            for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
+            {
+                filemem0[i] = ((short*)nin->data)[i*2];
+                filemem1[i] = ((short*)nin->data)[i*2+1];
+            }
 
-          float *d_volmem;
-          cudaMalloc(&d_volmem,sizeof(float)*dim[1]*dim[2]*dim[3]);
+            if (!d_volumeArray1)
+              cudaMalloc3DArray(&d_volumeArray1, &channelDesc, volumeSize);
+
+            cudaMemcpy3DParms copyParams1 = {0};
+            copyParams1.srcPtr   = make_cudaPitchedPtr((void*)filemem0, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
+            copyParams1.dstArray = d_volumeArray1;
+            copyParams1.extent   = volumeSize;
+            copyParams1.kind     = cudaMemcpyHostToDevice;
+            cudaMemcpy3D(&copyParams1);
+
+            tex1.normalized = false;                    
+            tex1.filterMode = cudaFilterModeLinear;     
+            tex1.addressMode[0] = cudaAddressModeBorder;
+            tex1.addressMode[1] = cudaAddressModeBorder;
+            tex1.addressMode[2] = cudaAddressModeBorder;
+            cudaBindTextureToArray(tex1, d_volumeArray1, channelDesc); 
+          }   
+
+          //float *d_volmem;
+          //cudaMalloc(&d_volmem,sizeof(float)*dim[1]*dim[2]*dim[3]);
 
           int numThread1D = 8;
           dim3 threadsPerBlock(numThread1D,numThread1D,numThread1D);
@@ -2796,17 +2805,17 @@ main(int argc, const char **argv) {
           //copy from device's global mem to texture mem
           //cudaMemcpy3DParms copyParams0 = {0};
           copyParams0.srcPtr   = make_cudaPitchedPtr((void*)d_volmem, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
-          copyParams0.dstArray = d_volumeArray0;
+          copyParams0.dstArray = d_volumeArray2;
           copyParams0.extent   = volumeSize;
           copyParams0.kind     = cudaMemcpyDeviceToDevice;
           cudaMemcpy3D(&copyParams0);
 
-          tex0.normalized = false;                    
-          tex0.filterMode = cudaFilterModeLinear;     
-          tex0.addressMode[0] = cudaAddressModeBorder;
-          tex0.addressMode[1] = cudaAddressModeBorder;
-          tex0.addressMode[2] = cudaAddressModeBorder;
-          cudaBindTextureToArray(tex0, d_volumeArray0, channelDesc);       
+          tex2.normalized = false;                    
+          tex2.filterMode = cudaFilterModeLinear;     
+          tex2.addressMode[0] = cudaAddressModeBorder;
+          tex2.addressMode[1] = cudaAddressModeBorder;
+          tex2.addressMode[2] = cudaAddressModeBorder;
+          cudaBindTextureToArray(tex2, d_volumeArray0, channelDesc);       
 
           //after that call the normal kernel to do MIP
           count = mini;

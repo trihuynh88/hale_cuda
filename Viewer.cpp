@@ -392,6 +392,8 @@ Viewer::mouseButtonCB(GLFWwindow *gwin, int button, int action, int mods) {
             : "release"), mods,
            vwr->_button[0] ? "_" : "^", vwr->_button[1] ? "_" : "^");
   }
+  if (vwr->_isPaused)
+    vwr->_mode = viewerModeNone;	
   glfwGetCursorPos(gwin, &xpos, &ypos);
   xf = xpos/vwr->_widthScreen;
   yf = ypos/vwr->_heightScreen;
@@ -456,6 +458,8 @@ Viewer::mouseButtonCB(GLFWwindow *gwin, int button, int action, int mods) {
   //Tri test
   vwr->_lastX = xpos;
   vwr->_lastY = ypos;
+  vwr->_lastClickedX = xpos;
+  vwr->_lastClickedY = ypos;
   return;
 }
 
@@ -467,6 +471,12 @@ Viewer::cursorPosCB(GLFWwindow *gwin, double xx, double yy) {
   glm::vec3 nfrom; // new from; used in various cases
   double fff; // tmp var
 
+  if (vwr->_isPaused)
+  {
+    vwr->_mode = viewerModeNone;
+    vwr->_lastX = xx;
+    vwr->_lastY = yy;    
+  }
   if (viewerModeNone == vwr->_mode) {
     /* nothing to do here */
     return;
@@ -901,6 +911,21 @@ double Viewer::getLastX()
 double Viewer::getLastY()
 {
   return _lastY;
+}
+
+double Viewer::getClickedX()
+{
+  return _lastClickedX;
+}
+
+double Viewer::getClickedY()
+{
+  return _lastClickedY;
+}
+
+void Viewer::setPaused(bool isPaused)
+{
+  _isPaused = isPaused;
 }
 
 } // namespace Hale

@@ -337,6 +337,9 @@ class Viewer {
   bool getButton(int index);
   double getLastX();
   double getLastY();
+  double getClickedX();
+  double getClickedY();
+  void setPaused(bool isPaused);
 
   int widthBuffer() {return _widthBuffer;};
   int heightBuffer() {return _heightBuffer;};
@@ -369,6 +372,8 @@ class Viewer {
   int _stateMasked;
   int _stateBKey;
   int _keyPressed;
+  double _lastClickedX, _lastClickedY;
+  bool _isPaused;
 
   GLFWwindow *_window; // the window we manage
   static void cursorPosCB(GLFWwindow *gwin, double xx, double yy);

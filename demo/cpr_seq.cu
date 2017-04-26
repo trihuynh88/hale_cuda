@@ -696,6 +696,66 @@ void kernel_cpr(int* dim, int *size, double verextent, double *center, double *d
     imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = 1;   
 }
 
+__global__
+void kernel_cprinter(double alpha, int* dim, int *size, double verextent, double *center, double *dir1, double *dir2, double swidth, double sstep, int nOutChannel, double* imageDouble
+        )
+{
+    int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int j = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    if ((i>=size[0]) || (j>=size[1]))
+        return;
+
+    //debugging
+    /*
+    dir1[0] = 0;
+    dir1[1] = 0;
+    dir1[2] = 1;
+    dir2[0] = 0;
+    dir2[1] = 1;
+    dir2[2] = 0;
+    */
+    //printf("Inside kernel: dot(dir1,dir2) = %f\n",dotProduct(dir1,dir2,3));
+
+    double pixsize = verextent/size[1];
+    int ni = i-size[0]/2;
+    int nj = size[1]/2 - j;
+    double pointi[3];
+    advancePoint(center,dir1,ni*pixsize,pointi);
+    advancePoint(pointi,dir2,nj*pixsize,pointi);
+
+    double mipdir[3];
+    cross(dir1,dir2,mipdir);
+    normalize(mipdir,3);
+
+    double mipval = INT_MIN;
+
+    
+    double curpoint[3];
+    int k;
+    for (k=0; k<3; k++)
+      curpoint[k] = pointi[k] - mipdir[k]*swidth/2;
+
+    for (k=0; k<ceil(swidth/sstep); k++)
+    {
+      double curval;
+      //curval = tex3DBicubic<float,float>(tex0,curpoint[0],curpoint[1],curpoint[2]);    
+      //curval = tex3DBicubic<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);    
+      curval = lerp(tex3DBicubic<float,float>(tex0,curpoint[0],curpoint[1],curpoint[2]),tex3DBicubic<float,float>(tex1,curpoint[0],curpoint[1],curpoint[2]),alpha);
+      mipval = MAX(mipval,curval);
+      curpoint[0] = curpoint[0] + mipdir[0]*sstep;
+      curpoint[1] = curpoint[1] + mipdir[1]*sstep;
+      curpoint[2] = curpoint[2] + mipdir[2]*sstep;
+    }
+        
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = 0;
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = mipval;
+    for (int k=2; k<nOutChannel-1; k++)
+      imageDouble[j*size[0]*nOutChannel+i*nOutChannel+k] = 0;
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = 1;   
+}
+
+
 void computeMean(double *points, int n, double *means)
 {
   memset(means,0,sizeof(double)*3);
@@ -2244,6 +2304,8 @@ main(int argc, const char **argv) {
     tex1.addressMode[1] = cudaAddressModeBorder;
     tex1.addressMode[2] = cudaAddressModeBorder;
     cudaBindTextureToArray(tex1, d_volumeArray1, channelDesc);    
+    double alpha = 0.5;
+    cudaError_t errCu;
 
     float *d_volmem;
     cudaMalloc(&d_volmem,sizeof(float)*dim[1]*dim[2]*dim[3]);
@@ -2252,10 +2314,10 @@ main(int argc, const char **argv) {
     dim3 threadsPerBlock(numThread1D,numThread1D,numThread1D);
     dim3 numBlocks((dim[1]+numThread1D-1)/numThread1D,(dim[2]+numThread1D-1)/numThread1D,(dim[3]+numThread1D-1)/numThread1D);
 
-    double alpha = 0.5;
+    
     kernel_interpol<<<numBlocks,threadsPerBlock>>>(d_volmem,d_dim,alpha);
 
-    cudaError_t errCu = cudaGetLastError();
+    errCu = cudaGetLastError();
     if (errCu != cudaSuccess) 
         printf("Error: %s\n", cudaGetErrorString(errCu));
 
@@ -2277,7 +2339,7 @@ main(int argc, const char **argv) {
     tex2.addressMode[1] = cudaAddressModeBorder;
     tex2.addressMode[2] = cudaAddressModeBorder;
     cudaBindTextureToArray(tex2, d_volumeArray0, channelDesc);       
-
+  
     //after that call the normal kernel to do MIP
     count = 1;
     for (int i=0; i<3; i++)
@@ -2321,6 +2383,7 @@ main(int argc, const char **argv) {
     dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
     kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+    //kernel_cprinter<<<numBlocks2,threadsPerBlock2>>>(alpha,d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
     errCu = cudaGetLastError();
     if (errCu != cudaSuccess) 
@@ -2560,6 +2623,7 @@ main(int argc, const char **argv) {
 
         verextent2 = verextent2*(1+pcent);
         kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+        //kernel_cprinter<<<numBlocks2,threadsPerBlock2>>>(alpha,d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
         errCu = cudaGetLastError();
         if (errCu != cudaSuccess) 
@@ -2784,10 +2848,12 @@ main(int argc, const char **argv) {
             cudaBindTextureToArray(tex1, d_volumeArray1, channelDesc); 
           }   
 
+          int numThread1D;
+          alpha = mint;
           //float *d_volmem;
           //cudaMalloc(&d_volmem,sizeof(float)*dim[1]*dim[2]*dim[3]);
-
-          int numThread1D = 8;
+          
+          numThread1D = 8;
           dim3 threadsPerBlock(numThread1D,numThread1D,numThread1D);
           dim3 numBlocks((dim[1]+numThread1D-1)/numThread1D,(dim[2]+numThread1D-1)/numThread1D,(dim[3]+numThread1D-1)/numThread1D);
 
@@ -2816,7 +2882,7 @@ main(int argc, const char **argv) {
           tex2.addressMode[1] = cudaAddressModeBorder;
           tex2.addressMode[2] = cudaAddressModeBorder;
           cudaBindTextureToArray(tex2, d_volumeArray0, channelDesc);       
-
+          
           //after that call the normal kernel to do MIP
           count = mini;
           for (int i=0; i<3; i++)
@@ -2860,6 +2926,7 @@ main(int argc, const char **argv) {
           dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
           kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+          //kernel_cprinter<<<numBlocks2,threadsPerBlock2>>>(alpha,d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
           errCu = cudaGetLastError();
           if (errCu != cudaSuccess) 

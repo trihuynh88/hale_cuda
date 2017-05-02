@@ -648,17 +648,6 @@ void kernel_cpr(int* dim, int *size, double verextent, double *center, double *d
     if ((i>=size[0]) || (j>=size[1]))
         return;
 
-    //debugging
-    /*
-    dir1[0] = 0;
-    dir1[1] = 0;
-    dir1[2] = 1;
-    dir2[0] = 0;
-    dir2[1] = 1;
-    dir2[2] = 0;
-    */
-    //printf("Inside kernel: dot(dir1,dir2) = %f\n",dotProduct(dir1,dir2,3));
-
     double pixsize = verextent/size[1];
     int ni = i-size[0]/2;
     int nj = size[1]/2 - j;
@@ -706,17 +695,6 @@ void kernel_cprinter(double alpha, int* dim, int *size, double verextent, double
     if ((i>=size[0]) || (j>=size[1]))
         return;
 
-    //debugging
-    /*
-    dir1[0] = 0;
-    dir1[1] = 0;
-    dir1[2] = 1;
-    dir2[0] = 0;
-    dir2[1] = 1;
-    dir2[2] = 0;
-    */
-    //printf("Inside kernel: dot(dir1,dir2) = %f\n",dotProduct(dir1,dir2,3));
-
     double pixsize = verextent/size[1];
     int ni = i-size[0]/2;
     int nj = size[1]/2 - j;
@@ -738,9 +716,7 @@ void kernel_cprinter(double alpha, int* dim, int *size, double verextent, double
 
     for (k=0; k<ceil(swidth/sstep); k++)
     {
-      double curval;
-      //curval = tex3DBicubic<float,float>(tex0,curpoint[0],curpoint[1],curpoint[2]);    
-      //curval = tex3DBicubic<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);    
+      double curval;  
       curval = lerp(tex3DBicubic<float,float>(tex0,curpoint[0],curpoint[1],curpoint[2]),tex3DBicubic<float,float>(tex1,curpoint[0],curpoint[1],curpoint[2]),alpha);
       mipval = MAX(mipval,curval);
       curpoint[0] = curpoint[0] + mipdir[0]*sstep;
@@ -1211,7 +1187,6 @@ glm::vec4 convertDepthBuffToWorldPos(int w, int h, double depth, Hale::Viewer *v
   double dist = glm::length(diff);
   double fangle = viewer->camera.fov()*AIR_PI/360;
   double vextent = dist*tan(fangle)*2;
-  //double vextent = dist*tan(fangle/2)*2;
   double pixelsize = vextent/viewer->heightBuffer();
   wv = wv*pixelsize;
   hv = hv*pixelsize;
@@ -1237,11 +1212,10 @@ glm::vec4 convertDepthBuffToViewPos(int w, int h, double depth, Hale::Viewer *vi
   double dist = glm::length(diff);
   double fangle = viewer->camera.fov()*AIR_PI/360;
   double vextent = dist*tan(fangle)*2;
-  //double vextent = dist*tan(fangle/2)*2;
   double pixelsize = vextent/viewer->heightBuffer();
   wv = wv*pixelsize;
   hv = hv*pixelsize;
-  printf("Inside convertDepthBuffToViewPos: viewpos = %f,%f,%f\n",wv,hv,depthv);
+  printf("Inside convertDepthBuffToViewPos: winpos = %d,%d; viewpos = %f,%f,%f\n",w,h,wv,hv,depthv);
   glm::vec4 vpos;
   vpos.x = wv;
   vpos.y = hv;
@@ -1273,10 +1247,7 @@ main(int argc, const char **argv) {
   char *name;
   char *texname1, *texname2;
   
-  //double dir1[3]={1,0,0};
-  //double dir2[3]={0,-1,0};
   double dir1[3],dir2[3];
-  //double *dir1,*dir2;
 
   //tmp fixed track coords, and radius
   double track[3] = {366.653991263,89.6381792864,104.736646409};
@@ -1288,9 +1259,7 @@ main(int argc, const char **argv) {
   double trackw[4];
   double radius = 10;
 
-//double *center;
   double center[3];
-  //memcpy(center,track,sizeof(double)*3);
 
   int size[2];
   Nrrd *nin;
@@ -1313,11 +1282,6 @@ main(int argc, const char **argv) {
   hparm->respFileEnable = AIR_TRUE;
   hparm->noArgsIsNoProblem = AIR_TRUE;
 
-  //hestOptAdd(&hopt, "i", "nin", airTypeOther, 1, 1, &nin, "270.nrrd",
-  //           "input volume to render", NULL, NULL, nrrdHestNrrd);
-  //hestOptAdd(&hopt, "nseq", "start end", airTypeInt, 2, 2, nseq, "270 279",
-  //           "start and end index of file names to process");  
-
   hestOptAdd(&hopt, "isize", "sx sy", airTypeInt, 2, 2, size, "200 200",
              "output image sizes");
 
@@ -1336,8 +1300,6 @@ main(int argc, const char **argv) {
   hestOptAdd(&hopt, "sstep", "ss", airTypeDouble, 1, 1, &sstep, "1",
              "the step of Maximum Intensity Projection through slice");  
 
-  //hestOptAdd(&hopt, "center", "x y z", airTypeDouble, 3, 3, center, "366.653991263 89.6381792864 104.736646409",
-  //           "center of the generated image");
   hestOptAdd(&hopt, "i", "name", airTypeString, 1, 1, &centername, "coord_newtrack_pioneer.txt", "name of files centaining centers");
   hestOptAdd(&hopt, "pref", "path", airTypeString, 1, 1, &pathprefix, "/media/trihuynh/781B8CE3469A7908/scivisdata", "prefix of the path to the folder containing data files");
 
@@ -1356,7 +1318,6 @@ main(int argc, const char **argv) {
   ifstream infile(centername);
   int *arr_nameid;
   double *arr_center;
-  //sprintf(pathprefix,"%s","/media/trihuynh/781B8CE3469A7908/scivisdata/helix");
 
   while (std::getline(infile, line))
   {
@@ -1402,8 +1363,6 @@ main(int argc, const char **argv) {
       vcenter.push_back(arr_center[i*3+0]);
       vcenter.push_back(arr_center[i*3+1]);
       vcenter.push_back(arr_center[i*3+2]);
-      //countv = vcenter.size()/3;
-      //arr_nameid[countv-1] = arr_nameid[i];
       vnameid.push_back(arr_nameid[i]);
     }
   }
@@ -1535,9 +1494,8 @@ main(int argc, const char **argv) {
   viewer.refreshCB((Hale::ViewerRefresher)render);
   viewer.refreshData(&viewer);
   viewer.current();
-  //test adding another viewer
+
   Hale::Scene scene2;
-  //Hale::Viewer viewer2(camsize[0], camsize[1], "Viewer2", &scene2, viewer.getGLFWwindow());
   Hale::Viewer viewer2(camsize[0], camsize[1], "Viewer2", &scene2);
   viewer2.lightDir(glm::vec3(-1.0f, 1.0f, 3.0f));
   viewer2.camera.init(glm::vec3(camfr[0], camfr[1], camfr[2]),
@@ -1547,11 +1505,6 @@ main(int argc, const char **argv) {
                      camnc, camfc, camortho);
   viewer2.refreshCB((Hale::ViewerRefresher)render);
   viewer2.refreshData(&viewer2);
-  //viewer2.current();
-  //scene2.drawInit();
-  //render(&viewer2);
-
-  //viewer.current();
 
   printf("Initialized viewer\n");
 
@@ -1562,53 +1515,10 @@ main(int argc, const char **argv) {
   newprog->bindAttribute(Hale::vertAttrIdxNorm, "normalVA");
   newprog->bindAttribute(Hale::vertAttrIdxTex2, "tex2VA");
   newprog->link();    
-  /*
-  Hale::Program *newprog2 = new Hale::Program("texdemo-vert.glsl","texdemo-frag.glsl");
-  newprog2->compile();
-  newprog2->bindAttribute(Hale::vertAttrIdxXYZW, "positionVA");
-  newprog2->bindAttribute(Hale::vertAttrIdxRGBA, "colorVA");
-  newprog2->bindAttribute(Hale::vertAttrIdxNorm, "normalVA");
-  newprog2->bindAttribute(Hale::vertAttrIdxTex2, "tex2VA");
-  newprog2->link(); 
-  */
-  //adding some points outside of the valid convolution range
+
   double spherescale = 0.2;
   double spherescale_inter = 0.3;
-  /*
-  int pointind[3];
-  pointind[0] = 0;
-  pointind[1] = countline-1;
-  pointind[2] = countline-2;
-  
-  for (int i=0; i<3; i++)
-  {
-    limnPolyData *lpld2 = limnPolyDataNew();
-    limnPolyDataIcoSphere(lpld2, 1 << limnPolyDataInfoNorm, 3);
-    //viewer2.current();
-    Hale::Polydata *hpld2 = new Hale::Polydata(lpld2, true,
-                         Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
-                         "IcoSphere");
-    //viewer.current();
-    hpld2->colorSolid(lerp(0,1,0,pointind[i],countline-1),lerp(1,0,0,pointind[i],countline-1),0.5);
-    
-    glm::mat4 fmat2 = glm::mat4();
-    
-    fmat2[0][0] = spherescale;
-    fmat2[1][1] = spherescale;
-    fmat2[2][2] = spherescale;
-    fmat2[3][0] = arr_center[pointind[i]*3+0];
-    fmat2[3][1] = arr_center[pointind[i]*3+1];
-    fmat2[3][2] = arr_center[pointind[i]*3+2];
-    fmat2[3][3] = 1;
-    
-    hpld2->model(fmat2);    
 
-    scene.add(hpld2);   
-  }
-  */
-
-  //test LineStrip
-  //viewer2.current();
   int density = 10; //how many points per one unit length in index-space
   int countls = 0;
   for (int i=1; i<countline-3; i++)
@@ -1618,28 +1528,9 @@ main(int argc, const char **argv) {
     countls += (dis*density);
   }
   limnPolyData *lpld3 = limnPolyDataNew();
-  //limnPolyDataAlloc(lpld3, 0, countline, countline, 1);
+
   limnPolyDataAlloc(lpld3, 0, countls, countls, 1);
-  /*
-  for (int i=0; i<countline; i++)
-  {
-    ELL_4V_SET(lpld3->xyzw + 4*i, arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2], 1.0);  
-    lpld3->indx[i] = i;
-  }
-  */
-  /*
-  {
-    int i = 0; int j = 0;
-    ELL_4V_SET(lpld3->xyzw + 4*j, arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2], 1.0);  
-    lpld3->indx[j] = j;
-    i = countline-1; j = countls-1;
-    ELL_4V_SET(lpld3->xyzw + 4*j, arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2], 1.0);  
-    lpld3->indx[j] = j;
-    i = countline-2; j = countls-2;
-    ELL_4V_SET(lpld3->xyzw + 4*j, arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2], 1.0);  
-    lpld3->indx[j] = j;
-  }
-  */
+
   int cpointind = 0;
   for (int i=1; i<countline-3; i++)
   {
@@ -1658,11 +1549,9 @@ main(int argc, const char **argv) {
     }
   }  
   lpld3->type[0] = limnPrimitiveLineStrip;
-  //lpld3->icnt[0] = countline;
   lpld3->icnt[0] = countls;
 
   printf("countls = %d\n", countls);
-
 
   //adding linestrip for original path
   limnPolyData *lpldorig = limnPolyDataNew();
@@ -1678,31 +1567,18 @@ main(int argc, const char **argv) {
                          Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
                          "LineStrip");  
   hpldorig->colorSolid(1.0,1.0,0.5);
-  //scene.add(hpldorig);
+  scene.add(hpldorig);
 
-  //viewer.current();
-  /*
-  ELL_4V_SET(lpld3->xyzw + 4*0, arr_center[0*3+0], arr_center[0*3+1], arr_center[0*3+2], 1.0);
-  ELL_4V_SET(lpld3->xyzw + 4*1, arr_center[1*3+0], arr_center[1*3+1], arr_center[1*3+2], 1.0);
-  ELL_4V_SET(lpld3->xyzw + 4*2, arr_center[2*3+0], arr_center[2*3+1], arr_center[2*3+2], 1.0);
-  ELL_4V_SET(lpld3->xyzw + 4*3, arr_center[3*3+0], arr_center[3*3+1], arr_center[3*3+2], 1.0);
-  lpld3->type[0] = limnPrimitiveLineStrip;
-  ELL_4V_SET(lpld3->indx, 0, 1, 2, 3);
-  lpld3->icnt[0] = 4;
-  */
-  //test tube
   limnPolyData *lpld4 = limnPolyDataNew();
   limnPolyDataSpiralTubeWrap(lpld4, lpld3,
                            0, NULL,
                            10, 4,
                            0.1);
 
-  //viewer2.current();
   Hale::Polydata *hpld3 = new Hale::Polydata(lpld3, true,
                          Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
                          "LineStrip");  
   hpld3->colorSolid(1.0,1.0,0.5);
-  //viewer.current();
 
   Hale::Polydata *hpld4 = new Hale::Polydata(lpld4, true,
                          Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
@@ -1725,7 +1601,6 @@ main(int argc, const char **argv) {
   for (int i=0; i<countline; i++)
     printf("%d %f %f %f\n", arr_nameid[i], arr_center[i*3+0], arr_center[i*3+1], arr_center[i*3+2]);
 
-
   //computing PCA
   double cov[9];
   computeCovariance(arr_center,countline,cov);
@@ -1744,12 +1619,7 @@ main(int argc, const char **argv) {
 
   for (count = 1; count<countline-2; count++)
   {
-    //infile >> curnameind;
-    //infile >> center[0] >> center[1] >> center[2];
     curnameind = arr_nameid[count];
-    //center[0] = arr_center[count*3];
-    //center[1] = arr_center[count*3+1];
-    //center[2] = arr_center[count*3+2];
     for (int i=0; i<3; i++)
       center[i] = cubicFilter<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
     printf("center = %f %f %f\n", center[0],center[1],center[2]);
@@ -1759,8 +1629,6 @@ main(int argc, const char **argv) {
     double dr[3],ddr[3];
     for (int i=0; i<3; i++)
       dr[i] = cubicFilter_G<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-    //dr[1] = cubicFilter_G<double>(0, arr_center[(count-1)*3+1], arr_center[(count)*3+1], arr_center[(count+1)*3+1], arr_center[(count+2)*3+1]);
-    //dr[2] = cubicFilter_G<double>(0, arr_center[(count-1)*3+2], arr_center[(count)*3+2], arr_center[(count+1)*3+2], arr_center[(count+2)*3+2]);
     for (int i=0; i<3; i++)
       ddr[i] = cubicFilter_GG<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
@@ -1806,16 +1674,11 @@ main(int argc, const char **argv) {
 
     printf("after initializing lpld\n");
     
-    //Hale::Polydata *hpld = new Hale::Polydata(lpld, true,
-    //                     Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
-    //                     "square");
     Hale::Polydata *hpld = new Hale::Polydata(lpld, true,
                          NULL,
                          "square");
 
     hpld->program(newprog);
-    //hpld->colorSolid(lerp(0,1,0,count,countline-1),lerp(1,0,0,count,countline-1),0.5);
-    //printf("after setting color for hpld\n");
     
     glm::mat4 tmat = glm::mat4();
     
@@ -1842,8 +1705,6 @@ main(int argc, const char **argv) {
     glm::mat4 fmat = tmat*smat;
 
     hpld->model(fmat);    
-
-
     
     //add a sphere
     limnPolyData *lpld2 = limnPolyDataNew();
@@ -1862,12 +1723,12 @@ main(int argc, const char **argv) {
     fmat2[3][0] = center[0];
     fmat2[3][1] = center[1];
     fmat2[3][2] = center[2];
-    fmat2[3][3] = 1;
-    
+    fmat2[3][3] = 1;    
 
     hpld2->model(fmat2);    
 
     scene.add(hpld2);    
+    vsphere.push_back(hpld2);
 
     //adding sphere for original track path too
     limnPolyData *lpldorigsp = limnPolyDataNew();
@@ -1887,17 +1748,16 @@ main(int argc, const char **argv) {
     fmat2[3][3] = 1;
 
     hpldorigsp->model(fmat2);    
+    scene.add(hpldorigsp);
 
-    //scene.add(hpldorigsp);        
     vsphereorig.push_back(hpldorigsp);
     
     printf("after adding hpld to scene\n");
 
     printf("added lpld\n");
 
-
     cout<<"Before read in file, with curnameind = "<<curnameind<<", center = "<<center[0]<<" "<<center[1]<<" "<<center[2]<<endl;
-    //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
+
     sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
     cout<<"inname = "<<inname<<endl;
 
@@ -1955,7 +1815,6 @@ main(int argc, const char **argv) {
         }
     }
     int channel = 1;
-    //int filesize = dim[0]*dim[1]*dim[2]*dim[3]*pixSize;
 
     if (!initalized)
     {
@@ -1963,7 +1822,6 @@ main(int argc, const char **argv) {
       filemem1 = new float[dim[1]*dim[2]*dim[3]];
     }
 
-    //filemem = (char*)nin->data;
     for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
     {
         filemem0[i] = ((short*)nin->data)[i*2];
@@ -1974,60 +1832,25 @@ main(int argc, const char **argv) {
     invertMat44(mat_trans,mat_trans_inv);
    //tex3D stuff
     const cudaExtent volumeSize = make_cudaExtent(dim[1], dim[2], dim[3]);
-
-    //cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float>();
+    
     if (!initalized)
     {
       cudaMalloc3DArray(&d_volumeArray2, &channelDesc, volumeSize);
-      //cudaMalloc3DArray(&d_volumeArray0, &channelDesc, volumeSize);
-      //cudaMalloc3DArray(&d_volumeArray1, &channelDesc, volumeSize);
     }
-
-    //temporarily not use tex1 (RFP)
-    /*
-    cudaMemcpy3DParms copyParams1 = {0};
-    copyParams1.srcPtr   = make_cudaPitchedPtr((void*)filemem1, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
-    copyParams1.dstArray = d_volumeArray1;
-    copyParams1.extent   = volumeSize;
-    copyParams1.kind     = cudaMemcpyHostToDevice;
-    cudaMemcpy3D(&copyParams1);
-    tex1.normalized = false;                      // access with normalized texture coordinates
-    tex1.filterMode = cudaFilterModeLinear;      // linear interpolation
-    tex1.addressMode[0] = cudaAddressModeBorder;   // wrap texture coordinates
-    tex1.addressMode[1] = cudaAddressModeBorder;
-    tex1.addressMode[2] = cudaAddressModeBorder;
-    cudaBindTextureToArray(tex1, d_volumeArray1, channelDesc);
-    */
 
     cudaMemcpy3DParms copyParams0 = {0};
     copyParams0.srcPtr   = make_cudaPitchedPtr((void*)filemem0, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
-    //copyParams0.dstArray = d_volumeArray0;
     copyParams0.dstArray = d_volumeArray2;
     copyParams0.extent   = volumeSize;
     copyParams0.kind     = cudaMemcpyHostToDevice;
     cudaMemcpy3D(&copyParams0);
-    // --- Set texture parameters  
-    /*
-    tex1.addressMode[0] = cudaAddressModeWrap;   // wrap texture coordinates
-    tex1.addressMode[1] = cudaAddressModeWrap;
-    tex1.addressMode[2] = cudaAddressModeWrap;
-    */
-
-
 
     tex2.normalized = false;                      // access with normalized texture coordinates
     tex2.filterMode = cudaFilterModeLinear;      // linear interpolation
-    /*
-    tex0.addressMode[0] = cudaAddressModeWrap;   // wrap texture coordinates
-    tex0.addressMode[1] = cudaAddressModeWrap;
-    tex0.addressMode[2] = cudaAddressModeWrap;
-    */
     tex2.addressMode[0] = cudaAddressModeBorder;   // wrap texture coordinates
     tex2.addressMode[1] = cudaAddressModeBorder;
     tex2.addressMode[2] = cudaAddressModeBorder;
-    // --- Bind array to 3D texture    
     cudaBindTextureToArray(tex2, d_volumeArray2, channelDesc);
-    //-----------
 
     nOutChannel = 4;
 
@@ -2081,21 +1904,8 @@ main(int argc, const char **argv) {
     drawNCircle(imageQuantized,4,size[0],size[1],0, count, countline/2,countline/2);
 
     hpld->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
-    //scene.add(hpld);
+    scene.add(hpld);
     vtexture.push_back(hpld);
-
-    //texture in viewer2
-    /*
-    limnPolyData *lpldv2 = limnPolyDataNew();
-    limnPolyDataSquare(lpldv2, 1 << limnPolyDataInfoNorm | 1 << limnPolyDataInfoTex2);    
-    Hale::Polydata *hpldv2 = new Hale::Polydata(lpldv2, true,
-                          NULL,
-                         "square");
-    hpldv2->program(newprog2);
-    //hpldv2->program(newprog);
-    hpldv2->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
-    vtexture2.push_back(hpldv2);
-    */
     
     drawCircle(imageQuantized,4,size[0],size[1],0,size[0]/2,size[1]/2,20);
     double trackedcenter[3];
@@ -2116,33 +1926,13 @@ main(int argc, const char **argv) {
     }
     else
     {
-      /*
-      if (coorft<0)
-      {        
-        color[0] = lerp(128,255,0,coorft,-swidth/2);
-        color[1] = lerp(128,0,0,coorft,-swidth/2);
-        color[2] = lerp(128,0,0,coorft,-swidth/2);
-      }
-      else
-      {
-        color[0] = lerp(128,0,0,coorft,swidth/2);
-        color[1] = lerp(128,0,0,coorft,swidth/2);
-        color[2] = lerp(128,255,0,coorft,swidth/2);
-      }
-      */
       color[0] = lerp(255,0,-swidth/2,coorft,swidth/2);
       color[1] = lerp(0,0,-swidth/2,coorft,swidth/2);
       color[2] = lerp(0,255,-swidth/2,coorft,swidth/2);
     }
     drawCrossWithColor(imageQuantized,4,size[0],size[1],size[0]/2+coorfn*size[1]/verextent,size[1]/2+coorfb*size[1]/verextent,20,color);
-    //drawCross(imageQuantized,4,size[0],size[1],2,size[0]/2,size[1]/2,20);
-//end of cuda_rendering
-
-    //sprintf(outnameslice,"cpr_seq_%d.tga",curnameind);
-    //saveImageWithoutQuantizing<unsigned char>(size[0],size[1],4,imageQuantized,outnameslice);
 
     initalized = 1;
-    //count++;
     sprintf(outnameslice,"cpr_seq_%d.png",curnameind);
     if (nrrdWrap_va(ndblpng, imageQuantized, nrrdTypeUChar, 3, 4, width, height)
       || nrrdSave(outnameslice, ndblpng, NULL)
@@ -2168,9 +1958,6 @@ main(int argc, const char **argv) {
     exit(1);
   }
 
-  //scene.add(vtexture2[0]);
-  
-  //scene2.add(vtexture2[0]);
   viewer2.current();  
   printf("after setting viewer2.current()\n");
     
@@ -2193,7 +1980,6 @@ main(int argc, const char **argv) {
     //find lerping between 2 volumes
     count = 1;
     curnameind = arr_nameid[count];
-    //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
     sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
     if (nrrdLoad(nin, inname, NULL)) {
       err = biffGetDone(NRRD);
@@ -2265,7 +2051,6 @@ main(int argc, const char **argv) {
     //read second file
     count = 2;
     curnameind = arr_nameid[count];
-    //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
     sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
     if (nrrdLoad(nin, inname, NULL)) {
       err = biffGetDone(NRRD);
@@ -2325,8 +2110,6 @@ main(int argc, const char **argv) {
     if (errCu != cudaSuccess) 
         printf("Error Sync: %s\n", cudaGetErrorString(errCu));
 
-    //copy from device's global mem to texture mem
-    //cudaMemcpy3DParms copyParams0 = {0};
     copyParams0.srcPtr   = make_cudaPitchedPtr((void*)d_volmem, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
     copyParams0.dstArray = d_volumeArray2;
     copyParams0.extent   = volumeSize;
@@ -2340,7 +2123,6 @@ main(int argc, const char **argv) {
     tex2.addressMode[2] = cudaAddressModeBorder;
     cudaBindTextureToArray(tex2, d_volumeArray0, channelDesc);       
   
-    //after that call the normal kernel to do MIP
     count = 1;
     for (int i=0; i<3; i++)
       center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
@@ -2383,7 +2165,6 @@ main(int argc, const char **argv) {
     dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
     kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
-    //kernel_cprinter<<<numBlocks2,threadsPerBlock2>>>(alpha,d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
     errCu = cudaGetLastError();
     if (errCu != cudaSuccess) 
@@ -2397,15 +2178,11 @@ main(int argc, const char **argv) {
 
     short width = size[0];
     short height = size[1];
-
-    //copyImageChannel<double,short>(imageDouble,4,size[0],size[1],1,outdata+count*size[0]*size[1],1,0);
     
     quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
     setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
 
-
     hpldview2->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
-
 
     //add a sphere for the interpolated position
     viewer.current();
@@ -2431,71 +2208,8 @@ main(int argc, const char **argv) {
     hpld_inter->model(fmat2);    
 
     scene.add(hpld_inter);   
- /*
-    fmat2[0][0] = spherescale;
-    fmat2[1][1] = spherescale;
-    fmat2[2][2] = spherescale;
-    fmat2[3][0] = center[0]+5;
-    fmat2[3][1] = center[1];
-    fmat2[3][2] = center[2];
-    fmat2[3][3] = 1;
-    printf("center of the first interpolated point: %f,%f,%f\n", center[0],center[1],center[2]);
-
-    hpld_inter->model(fmat2);    
-  */
     viewer2.current();
-    /*
-    count = 2;
-    center[0] = arr_center[count*3];
-    center[1] = arr_center[count*3+1];
-    center[2] = arr_center[count*3+2];
-    
-    double FT[3];
-    double FN[3],FB[3];
-    double dr[3],ddr[3];
-    for (int i=0; i<3; i++)
-      dr[i] = cubicFilter_G<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-    for (int i=0; i<3; i++)
-      ddr[i] = cubicFilter_GG<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
-    normalize(dr,3);
-    normalize(ddr,3);
-
-    memcpy(FT,dr,sizeof(double)*3);
-    double crossddrdr[3];
-    cross(ddr,dr,crossddrdr);
-    cross(dr,crossddrdr,FN);
-    normalize(FN,3);
-    cross(FT,FN,FB);
-    memcpy(dir1,FN,sizeof(double)*3);
-    memcpy(dir2,FB,sizeof(double)*3);
-
-    glm::mat4 tmat = glm::mat4();
-    
-    tmat[0][0] = FN[0];
-    tmat[0][1] = FN[1];
-    tmat[0][2] = FN[2];
-    tmat[0][3] = 0;
-    tmat[1][0] = FB[0];
-    tmat[1][1] = FB[1];
-    tmat[1][2] = FB[2];
-    tmat[1][3] = 0;
-    tmat[2][0] = FT[0];
-    tmat[2][1] = FT[1];
-    tmat[2][2] = FT[2];
-    tmat[2][3] = 0;
-    tmat[3][0] = center[0];
-    tmat[3][1] = center[1];
-    tmat[3][2] = center[2];
-    tmat[3][3] = 1;
-    
-    glm::mat4 smat = glm::mat4();
-    smat[0][0] = 2;
-    smat[1][1] = 2;
-    glm::mat4 fmat = tmat*smat;
-
-    hpldview2->model(fmat);
-    */
   curVolInMem = 1;
     
   scene2.add(hpldview2);
@@ -2515,7 +2229,6 @@ main(int argc, const char **argv) {
   scene.drawInit();
   printf("after scene.drawInit()\n");
   render(&viewer);
-  //viewer.draw();
   
   printf("after render(&viewer)\n");
 
@@ -2551,31 +2264,36 @@ main(int argc, const char **argv) {
   }
   printf("minmaxz = (%f,%f)\n",minz,maxz );
   saveImage<GLfloat>(viewer.widthBuffer(),viewer.heightBuffer(),1,zbuffer,"depth.tga");
-    //printf("%f ", zbuffer[i]);  
-  //viewer.bufferSwap();
 
   bool stateBKey = false;
   bool stateMKey = false;
   bool stateNKey = false;
   bool stateZoom = false;
+  bool stateXKey = false;
   double lastX, lastY;
   double verextent2 = verextent;
   bool isHoldOn = false;
   bool checkPath = false;
+  int stateBKeyInt = 0;
   while(!Hale::finishing){
     glfwWaitEvents();
     int keyPressed = viewer.getKeyPressed();
     if (stateBKey!=viewer.getStateBKey())
     {
       stateBKey = viewer.getStateBKey();
-      if (stateBKey)
+      stateBKeyInt = (stateBKeyInt+1)%3;
+      if (stateBKeyInt == 1)
       {
         scene.remove(hpld4);
         scene.add(hpld3);
       }
-      else
+      else if (stateBKeyInt == 2)
       {
         scene.remove(hpld3);
+      }
+      else
+      {
+        //scene.remove(hpld3);
         scene.add(hpld4);
       }
     }
@@ -2609,6 +2327,20 @@ main(int argc, const char **argv) {
         scene.add(hpldorig);
       }
     }
+    if (keyPressed == 'X')
+    {
+      stateXKey = !stateXKey;
+      if (stateXKey)
+      {
+        for (int i=0; i<vsphere.size(); i++)
+          scene.remove(vsphere[i]);
+      }
+      else
+      {
+        for (int i=0; i<vsphere.size(); i++)
+          scene.add(vsphere[i]);
+      }
+    }
 
     //processing zooming in the second window (MIP image)
     if (stateZoom)
@@ -2623,7 +2355,6 @@ main(int argc, const char **argv) {
 
         verextent2 = verextent2*(1+pcent);
         kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
-        //kernel_cprinter<<<numBlocks2,threadsPerBlock2>>>(alpha,d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
         errCu = cudaGetLastError();
         if (errCu != cudaSuccess) 
@@ -2649,7 +2380,6 @@ main(int argc, const char **argv) {
       if (viewer2.getButton(0) && viewer2.getMode()==Hale::viewerModeZoom)
       {
         stateZoom = true;
-        //lastX = viewer2.getLastX();
         lastY = viewer2.getLastY();
         printf("Begin zooming: lastY = %f\n",lastY);
       }
@@ -2664,8 +2394,6 @@ main(int argc, const char **argv) {
         int hposwC = viewer.heightBuffer()-viewer.getClickedY();
         double dposwC = zbufferC[hposwC*viewer.widthBuffer()+wposwC];
         printf("First Clicked (w,h,depth) = %d,%d,%f\n", wposwC,hposwC,dposwC);
-        //printf("Before converting: wpos = %d, hpos = %d, dpos = %f\n", wposw,hposw,dposw);
-        //glm::vec4 wposworld = convertDepthBuffToWorldPos(wposw,hposw,dposw,&viewer);
         glm::vec4 wposviewC = convertDepthBuffToViewPos(wposwC,hposwC,dposwC,&viewer);
         printf("First Clicked View Pos = %f,%f,%f\n", wposviewC.x,wposviewC.y,wposviewC.z);
 
@@ -2676,16 +2404,12 @@ main(int argc, const char **argv) {
       
       if (checkPath)
       {
-
-        //printf("viewer clicked: %f, %f\n",viewer.getLastX(),viewer.getLastY());
         GLfloat* zbuffer = new GLfloat[viewer.widthBuffer()*viewer.heightBuffer()];
         glReadPixels(0,0,viewer.widthBuffer(),viewer.heightBuffer(),GL_DEPTH_COMPONENT,GL_FLOAT,zbuffer);  
         int wposw = viewer.getLastX();
         int hposw = viewer.heightBuffer()-viewer.getLastY();
         double dposw = zbuffer[hposw*viewer.widthBuffer()+wposw];
         printf("Drag Clicked (w,h,depth) = %d,%d,%f\n", wposw,hposw,dposw);
-        //printf("Before converting: wpos = %d, hpos = %d, dpos = %f\n", wposw,hposw,dposw);
-        //glm::vec4 wposworld = convertDepthBuffToWorldPos(wposw,hposw,dposw,&viewer);
         glm::vec4 wposview = convertDepthBuffToViewPos(wposw,hposw,dposw,&viewer);
         printf("Drag Clicked View Pos = %f,%f,%f\n", wposview.x,wposview.y,wposview.z);
         if (dposw<1.0)
@@ -2694,11 +2418,7 @@ main(int argc, const char **argv) {
           int mini = -1;
           for (int i=1; i<countline-3; i++)
           {
-            //double dis1 = diss2P(wposworld.x,wposworld.y,wposworld.z,arr_center[i*3+0],arr_center[i*3+1],arr_center[i*3+2]);
-            //double dis2 = diss2P(wposworld.x,wposworld.y,wposworld.z,arr_center[(i+1)*3+0],arr_center[(i+1)*3+1],arr_center[(i+1)*3+2]);
             glm::vec4 curposview = convertWorldToViewPos(arr_center[i*3+0],arr_center[i*3+1],arr_center[i*3+2],&viewer);          
-            //double dis1 = diss2P(wposworld.x,wposworld.y,wposworld.z,arr_center[i*3+0],arr_center[i*3+1],arr_center[i*3+2]);
-            //double dis2 = diss2P(wposworld.x,wposworld.y,wposworld.z,arr_center[(i+1)*3+0],arr_center[(i+1)*3+1],arr_center[(i+1)*3+2]);          
             double dis1 = diss2P(wposview.x,wposview.y,wposview.z,curposview.x,curposview.y,curposview.z);
             curposview = convertWorldToViewPos(arr_center[(i+1)*3+0],arr_center[(i+1)*3+1],arr_center[(i+1)*3+2],&viewer);
             double dis2 = diss2P(wposview.x,wposview.y,wposview.z,curposview.x,curposview.y,curposview.z);
@@ -2718,7 +2438,6 @@ main(int argc, const char **argv) {
             double center[3];
             for (int j=0; j<3; j++)
               center[j] = cubicFilter<double>(t, arr_center[(mini-1)*3+j], arr_center[(mini)*3+j], arr_center[(mini+1)*3+j], arr_center[(mini+2)*3+j]);
-            //double dis = diss2P(wposworld.x,wposworld.y,wposworld.z,center[0],center[1],center[2]);
             glm::vec4 curposview = convertWorldToViewPos(center[0],center[1],center[2],&viewer);
             double dis = diss2P(wposview.x,wposview.y,wposview.z,curposview.x,curposview.y,curposview.z);
 
@@ -2735,7 +2454,6 @@ main(int argc, const char **argv) {
             //find lerping between 2 volumes
             count = mini;
             curnameind = arr_nameid[count];
-            //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
             sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
             if (nrrdLoad(nin, inname, NULL)) {
               err = biffGetDone(NRRD);
@@ -2807,7 +2525,6 @@ main(int argc, const char **argv) {
             //read second file
             count = mini+1;
             curnameind = arr_nameid[count];
-            //sprintf(inname,"/media/trihuynh/781B8CE3469A7908/scivisdata/%d.nrrd",curnameind);
             sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
             if (nrrdLoad(nin, inname, NULL)) {
               err = biffGetDone(NRRD);
@@ -2850,8 +2567,6 @@ main(int argc, const char **argv) {
 
           int numThread1D;
           alpha = mint;
-          //float *d_volmem;
-          //cudaMalloc(&d_volmem,sizeof(float)*dim[1]*dim[2]*dim[3]);
           
           numThread1D = 8;
           dim3 threadsPerBlock(numThread1D,numThread1D,numThread1D);
@@ -2869,7 +2584,6 @@ main(int argc, const char **argv) {
               printf("Error Sync: %s\n", cudaGetErrorString(errCu));
 
           //copy from device's global mem to texture mem
-          //cudaMemcpy3DParms copyParams0 = {0};
           copyParams0.srcPtr   = make_cudaPitchedPtr((void*)d_volmem, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
           copyParams0.dstArray = d_volumeArray2;
           copyParams0.extent   = volumeSize;
@@ -2926,7 +2640,6 @@ main(int argc, const char **argv) {
           dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
           kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
-          //kernel_cprinter<<<numBlocks2,threadsPerBlock2>>>(alpha,d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
           errCu = cudaGetLastError();
           if (errCu != cudaSuccess) 
@@ -2940,41 +2653,15 @@ main(int argc, const char **argv) {
 
           short width = size[0];
           short height = size[1];
-
-          //copyImageChannel<double,short>(imageDouble,4,size[0],size[1],1,outdata+count*size[0]*size[1],1,0);
           
           quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
           setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
 
           viewer2.current();
           hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
-          //hpldview2->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);      
-          //add a sphere for the interpolated position
           
           viewer.current();
-          /*
-          limnPolyData *lpld2 = limnPolyDataNew();
-          limnPolyDataIcoSphere(lpld2, 1 << limnPolyDataInfoNorm, 3);
 
-          Hale::Polydata *hpld_inter = new Hale::Polydata(lpld2, true,
-                               Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
-                               "IcoSphere");
-          hpld_inter->colorSolid(0,0,1.0);
-          
-          glm::mat4 fmat2 = glm::mat4();
-          
-          fmat2[0][0] = spherescale;
-          fmat2[1][1] = spherescale;
-          fmat2[2][2] = spherescale;
-          fmat2[3][0] = center[0];
-          fmat2[3][1] = center[1];
-          fmat2[3][2] = center[2];
-          fmat2[3][3] = 1;
-          printf("center of the last interpolated point: %f,%f,%f\n", center[0],center[1],center[2]);
-          
-          hpld_inter->model(fmat2);    
-          */
-          //fmat2[3][0] += 3;
           printf("alpha = %f",alpha);
           printf("center of the previous interpolated point: %f,%f,%f\n", fmat2[3][0],fmat2[3][1],fmat2[3][2]);
           printf("center of the last interpolated point: %f,%f,%f\n", center[0],center[1],center[2]);
@@ -2982,9 +2669,6 @@ main(int argc, const char **argv) {
           fmat2[3][1] = center[1];
           fmat2[3][2] = center[2];
           hpld_inter->model(fmat2);
-          //scene.remove(hpld_inter);
-          //scene.add(hpld_inter);   
-          //scene.drawInit();
         }
       }
     }

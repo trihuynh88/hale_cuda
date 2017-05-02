@@ -1467,7 +1467,7 @@ main(int argc, const char **argv) {
   float camfr[3], camat[3], camup[3], camnc, camfc, camFOV;
   int camortho;
   unsigned int camsize[2];
-  /*
+  
   camfr[0] = arr_center[countline/2*3+0];
   camfr[1] = arr_center[countline/2*3+1];
   camfr[2] = arr_center[countline/2*3+2]-5;
@@ -1483,10 +1483,10 @@ main(int argc, const char **argv) {
   camortho = 1;
   camsize[0] = 500;
   camsize[1] = 500;
-  */
+  
 
   //debug clicking
-  
+  /*
   camfr[0] = 0;
   camfr[1] = 1;
   camfr[2] = -6;
@@ -1502,7 +1502,7 @@ main(int argc, const char **argv) {
   camortho = 1;
   camsize[0] = 500;
   camsize[1] = 500;  
-  
+  */
   Hale::init();
   //Hale::debugging = 1;
   Hale::Scene scene;
@@ -2247,7 +2247,7 @@ main(int argc, const char **argv) {
   viewer.verbose(3);
 
   //add a testing sphere
-  
+  /*
     viewer.current();
     limnPolyData *lpldtestsphere = limnPolyDataNew();
     limnPolyDataIcoSphere(lpldtestsphere, 1 << limnPolyDataInfoNorm, 3);
@@ -2272,6 +2272,7 @@ main(int argc, const char **argv) {
     
 
     scene.add(hpldtestsphere);    
+  */
   /////////////////////////////////
 
 
@@ -2449,8 +2450,8 @@ main(int argc, const char **argv) {
         glm::vec4 wposviewC = convertDepthBuffToViewPos(wposwC,hposwC,dposwC,&viewer);
         printf("First Clicked View Pos = %f,%f,%f\n", wposviewC.x,wposviewC.y,wposviewC.z);
         //debug
-        glm::vec4 testpostview = convertWorldToViewPos(4,5,4,&viewer);      
-        printf("View Pos of World Pos (4,5,4) is = %f,%f,%f\n", testpostview.x,testpostview.y,testpostview.z);
+        //glm::vec4 testpostview = convertWorldToViewPos(4,5,4,&viewer);      
+        //printf("View Pos of World Pos (4,5,4) is = %f,%f,%f\n", testpostview.x,testpostview.y,testpostview.z);
         ////
         isHoldOn = true;
         checkPath = (dposwC<1.0);

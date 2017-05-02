@@ -2407,6 +2407,7 @@ main(int argc, const char **argv) {
         stateZoom = false;
 
         verextent2 = verextent2*(1+pcent);
+
         kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
         errCu = cudaGetLastError();
@@ -2713,7 +2714,7 @@ main(int argc, const char **argv) {
           dim3 threadsPerBlock2(numThread1D,numThread1D);
           dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
-          kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+          kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
           errCu = cudaGetLastError();
           if (errCu != cudaSuccess) 

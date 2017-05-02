@@ -2475,14 +2475,31 @@ main(int argc, const char **argv) {
           for (int i=1; i<countline-3; i++)
           {
             glm::vec4 curposview = convertWorldToViewPos(arr_center[i*3+0],arr_center[i*3+1],arr_center[i*3+2],&viewer);          
-            double dis1 = diss2P(wposview.x,wposview.y,wposview.z,curposview.x,curposview.y,curposview.z);
-            curposview = convertWorldToViewPos(arr_center[(i+1)*3+0],arr_center[(i+1)*3+1],arr_center[(i+1)*3+2],&viewer);
-            double dis2 = diss2P(wposview.x,wposview.y,wposview.z,curposview.x,curposview.y,curposview.z);
-            printf("Point %d (%d) View Pos = %f,%f,%f, dis = %f\n",i,arr_nameid[i], curposview.x,curposview.y,curposview.z,dis1);
-            if (dis1+dis2<dismin)
+            //test using on x and y in view coordinate to find the closest point (not using z)
+            //double dis1 = diss2P(wposview.x,wposview.y,wposview.z,curposview.x,curposview.y,curposview.z);
+            glm::vec4 curposview2 = convertWorldToViewPos(arr_center[(i+1)*3+0],arr_center[(i+1)*3+1],arr_center[(i+1)*3+2],&viewer);
+            double vec1[3],vec2[3];
+            vec1[0] = curposview.x-wposview.x;
+            vec1[1] = curposview.y-wposview.y;
+            vec1[2] = 0;
+            vec2[0] = curposview2.x-wposview.x;
+            vec2[1] = curposview2.y-wposview.y;
+            vec2[2] = 0;
+            normalize(vec1,3);
+            normalize(vec2,3);
+            double angle = computeAngle(vec1,vec2);
+            printf("Point %d (%d), View pos 1 = %f,%f,%f; View pos 2 = %f,%f,%f; angle = %f\n",i,arr_nameid[i],curposview.x,curposview.y,curposview.z,curposview2.x,curposview2.y,curposview2.z, angle);
+            if (angle > 100)
             {
-              dismin = dis1+dis2;
-              mini = i;
+              double dis1 = diss2P(wposview.x,wposview.y,0,curposview.x,curposview.y,0);
+              //double dis2 = diss2P(wposview.x,wposview.y,wposview.z,curposview.x,curposview.y,curposview.z);
+              double dis2 = diss2P(wposview.x,wposview.y,0,curposview2.x,curposview2.y,0);
+              printf("Point %d (%d) View Pos = %f,%f,%f, dis = %f\n",i,arr_nameid[i], curposview.x,curposview.y,curposview.z,dis1);
+              if (dis1+dis2<dismin)
+              {
+                dismin = dis1+dis2;
+                mini = i;
+              }
             }        
           }
           int numsample = 20;
@@ -2495,7 +2512,8 @@ main(int argc, const char **argv) {
             for (int j=0; j<3; j++)
               center[j] = cubicFilter<double>(t, arr_center[(mini-1)*3+j], arr_center[(mini)*3+j], arr_center[(mini+1)*3+j], arr_center[(mini+2)*3+j]);
             glm::vec4 curposview = convertWorldToViewPos(center[0],center[1],center[2],&viewer);
-            double dis = diss2P(wposview.x,wposview.y,wposview.z,curposview.x,curposview.y,curposview.z);
+            //double dis = diss2P(wposview.x,wposview.y,wposview.z,curposview.x,curposview.y,curposview.z);
+            double dis = diss2P(wposview.x,wposview.y,1,curposview.x,curposview.y,1);
 
             if (dis<dismin)
             {

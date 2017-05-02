@@ -1084,6 +1084,7 @@ float linearizeDepth(float depth, float zNear, float zFar)
 
 float linearizeDepthOrtho(float depth, float zNear, float zFar)
 {
+    //the returned depth is relative to the "at" point
     return (depth*(zFar-zNear)+zFar+zNear)/2;
 }
 
@@ -1190,6 +1191,7 @@ glm::vec4 convertDepthBuffToWorldPos(int w, int h, double depth, Hale::Viewer *v
   double pixelsize = vextent/viewer->heightBuffer();
   wv = wv*pixelsize;
   hv = hv*pixelsize;
+  depthv = -(depthv+dist);
   printf("Inside convertDepthBuffToWorldPos: viewpos = %f,%f,%f\n",wv,hv,depthv);
   glm::vec4 vpos;
   vpos.x = wv;
@@ -1215,6 +1217,7 @@ glm::vec4 convertDepthBuffToViewPos(int w, int h, double depth, Hale::Viewer *vi
   double pixelsize = vextent/viewer->heightBuffer();
   wv = wv*pixelsize;
   hv = hv*pixelsize;
+  depthv = -(depthv+dist);
   printf("Inside convertDepthBuffToViewPos: winpos = %d,%d; viewpos = %f,%f,%f\n",w,h,wv,hv,depthv);
   glm::vec4 vpos;
   vpos.x = wv;
@@ -1464,6 +1467,7 @@ main(int argc, const char **argv) {
   float camfr[3], camat[3], camup[3], camnc, camfc, camFOV;
   int camortho;
   unsigned int camsize[2];
+  /*
   camfr[0] = arr_center[countline/2*3+0];
   camfr[1] = arr_center[countline/2*3+1];
   camfr[2] = arr_center[countline/2*3+2]-5;
@@ -1479,6 +1483,25 @@ main(int argc, const char **argv) {
   camortho = 1;
   camsize[0] = 500;
   camsize[1] = 500;
+  */
+
+  //debug clicking
+  
+  camfr[0] = 0;
+  camfr[1] = 1;
+  camfr[2] = -6;
+  camat[0] = 0;
+  camat[1] = 1;
+  camat[2] = -1;
+  camup[0] = 1;
+  camup[1] = 0;
+  camup[2] = 0;
+  camnc = -10;
+  camfc = 10;
+  camFOV = 90;
+  camortho = 1;
+  camsize[0] = 500;
+  camsize[1] = 500;  
   
   Hale::init();
   //Hale::debugging = 1;
@@ -2223,6 +2246,35 @@ main(int argc, const char **argv) {
   viewer.current();
   viewer.verbose(3);
 
+  //add a testing sphere
+  
+    viewer.current();
+    limnPolyData *lpldtestsphere = limnPolyDataNew();
+    limnPolyDataIcoSphere(lpldtestsphere, 1 << limnPolyDataInfoNorm, 3);
+
+    Hale::Polydata *hpldtestsphere = new Hale::Polydata(lpldtestsphere, true,
+                         Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
+                         "IcoSphere");
+    hpldtestsphere->colorSolid(1.0,0,0);
+    
+    
+    glm::mat4 fmat3 = glm::mat4();
+    
+    fmat3[0][0] = 1;
+    fmat3[1][1] = 1;
+    fmat3[2][2] = 1;
+    fmat3[3][0] = 4;
+    fmat3[3][1] = 5;
+    fmat3[3][2] = 5;
+    fmat3[3][3] = 1;    
+
+    hpldtestsphere->model(fmat3);    
+    
+
+    scene.add(hpldtestsphere);    
+  /////////////////////////////////
+
+
   
 
   cout<<"After saving output nrrd"<<endl;
@@ -2396,7 +2448,10 @@ main(int argc, const char **argv) {
         printf("First Clicked (w,h,depth) = %d,%d,%f\n", wposwC,hposwC,dposwC);
         glm::vec4 wposviewC = convertDepthBuffToViewPos(wposwC,hposwC,dposwC,&viewer);
         printf("First Clicked View Pos = %f,%f,%f\n", wposviewC.x,wposviewC.y,wposviewC.z);
-
+        //debug
+        glm::vec4 testpostview = convertWorldToViewPos(4,5,4,&viewer);      
+        printf("View Pos of World Pos (4,5,4) is = %f,%f,%f\n", testpostview.x,testpostview.y,testpostview.z);
+        ////
         isHoldOn = true;
         checkPath = (dposwC<1.0);
         viewer.setPaused(checkPath);
@@ -2414,7 +2469,7 @@ main(int argc, const char **argv) {
         printf("Drag Clicked View Pos = %f,%f,%f\n", wposview.x,wposview.y,wposview.z);
         if (dposw<1.0)
         {
-          double dismin = 1000;
+          double dismin = INT_MAX;
           int mini = -1;
           for (int i=1; i<countline-3; i++)
           {
@@ -2430,7 +2485,7 @@ main(int argc, const char **argv) {
             }        
           }
           int numsample = 20;
-          dismin = 1000;
+          dismin = INT_MAX;
           double mint = -1;
           for (int i=0; i<=numsample; i++)
           {

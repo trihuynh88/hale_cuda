@@ -2671,6 +2671,7 @@ main(int argc, const char **argv) {
     {
       if (!viewer2.getButton(0))
       {
+        /*
         double curY = viewer2.getLastY();
         int heightBuff = viewer2.heightBuffer();
         double pcent = (curY-lastY)/heightBuff;
@@ -2696,10 +2697,42 @@ main(int argc, const char **argv) {
 
         viewer2.current();
         hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+        */
+        stateZoom = false;
       }
       else
         if (std::isnan(lastY))
           lastY = viewer2.getLastY();
+        else
+        {
+          double curY = viewer2.getLastY();
+          int heightBuff = viewer2.heightBuffer();
+          double pcent = (curY-lastY)/heightBuff;
+          printf("percent zoom = %f (curY = %f, lastY = %f, heightBuff = %d)\n", pcent, curY,lastY,heightBuff);
+          //stateZoom = false;
+
+          verextent2 = verextent2*(1+pcent);
+
+          kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+
+          errCu = cudaGetLastError();
+          if (errCu != cudaSuccess) 
+              printf("Error: %s\n", cudaGetErrorString(errCu));
+
+          errCu = cudaDeviceSynchronize();
+          if (errCu != cudaSuccess) 
+              printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+          cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+          
+          quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+          setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+
+          viewer2.current();
+          hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+
+          lastY = curY;
+        }
     }
     else
       if (viewer2.getButton(0) && viewer2.getMode()==Hale::viewerModeZoom)

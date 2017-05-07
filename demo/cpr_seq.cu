@@ -1406,6 +1406,140 @@ private:
   int dim[4];
 };
 
+void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue, int *arr_nameid, 
+  double *arr_center, char *pathprefix, airArray *mop, unsigned int pixSize, int *dim, int *size, 
+  double *eigenvec, double verextent2, double swidth, double sstep, int nOutChannel, float *d_volmem, 
+  int *d_dim, int *d_size, double *d_dir1, double *d_dir2, double *d_center, double *imageDouble, double *d_imageDouble,
+  unsigned char *imageQuantized, Hale::Viewer &viewer, Hale::Viewer &viewer2, Hale::Polydata *hpldview2, 
+  Hale::Polydata *hpld_inter, double spherescale)
+{
+  int count;
+  double dir1[3],dir2[3],center[3];
+  const cudaExtent volumeSize = make_cudaExtent(dim[1], dim[2], dim[3]);
+  cudaChannelFormatDesc channelDesc;
+  channelDesc = cudaCreateChannelDesc<float>();
+
+  if (curVolInMem != mini)
+  {
+    curVolInMem = mini;
+    count = mini;
+    cudaError_t errCu;
+    cudaArray* d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+
+    tex0.normalized = false;                    
+    tex0.filterMode = cudaFilterModeLinear;     
+    tex0.addressMode[0] = cudaAddressModeBorder;
+    tex0.addressMode[1] = cudaAddressModeBorder;
+    tex0.addressMode[2] = cudaAddressModeBorder;
+    cudaBindTextureToArray(tex0, d_curvolarr, channelDesc);    
+
+    count = mini+1;
+    d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+    tex1.normalized = false;                    
+    tex1.filterMode = cudaFilterModeLinear;     
+    tex1.addressMode[0] = cudaAddressModeBorder;
+    tex1.addressMode[1] = cudaAddressModeBorder;
+    tex1.addressMode[2] = cudaAddressModeBorder;
+    cudaBindTextureToArray(tex1, d_curvolarr, channelDesc); 
+  }   
+
+  int numThread1D;
+  
+  numThread1D = 8;
+  dim3 threadsPerBlock(numThread1D,numThread1D,numThread1D);
+  dim3 numBlocks((dim[1]+numThread1D-1)/numThread1D,(dim[2]+numThread1D-1)/numThread1D,(dim[3]+numThread1D-1)/numThread1D);
+
+  kernel_interpol<<<numBlocks,threadsPerBlock>>>(d_volmem,d_dim,alpha);
+
+  cudaError_t errCu = cudaGetLastError();
+  if (errCu != cudaSuccess) 
+      printf("Error After kernel_nterpol when clicking: %s\n", cudaGetErrorString(errCu));
+
+  errCu = cudaDeviceSynchronize();
+  if (errCu != cudaSuccess) 
+      printf("Error Sync After kernel_nterpol when clicking: %s\n", cudaGetErrorString(errCu));
+
+  //copy from device's global mem to texture mem
+  cudaMemcpy3DParms copyParams0 = {0};
+  copyParams0.srcPtr   = make_cudaPitchedPtr((void*)d_volmem, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
+  copyParams0.dstArray = d_volumeArray[NTEX];
+  copyParams0.extent   = volumeSize;
+  copyParams0.kind     = cudaMemcpyDeviceToDevice;
+  cudaMemcpy3D(&copyParams0);
+
+  tex2.normalized = false;                    
+  tex2.filterMode = cudaFilterModeLinear;     
+  tex2.addressMode[0] = cudaAddressModeBorder;
+  tex2.addressMode[1] = cudaAddressModeBorder;
+  tex2.addressMode[2] = cudaAddressModeBorder;
+  cudaBindTextureToArray(tex2, d_volumeArray[NTEX], channelDesc);       
+  
+  //after that call the normal kernel to do MIP
+  count = mini;
+  for (int i=0; i<3; i++)
+    center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+  
+  double FT[3];
+  double FN[3],FB[3];
+  double dr[3],ddr[3];
+  for (int i=0; i<3; i++)
+    dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+
+  for (int i=0; i<3; i++)
+    ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+
+  normalize(dr,3);
+  normalize(ddr,3);
+
+  memcpy(FT,dr,sizeof(double)*3);
+  memcpy(FN,eigenvec,sizeof(double)*3);
+  normalize(FN,3);
+  cross(FT,FN,FB);
+  cross(FB,FT,FN);
+  memcpy(dir1,FN,sizeof(double)*3);
+  memcpy(dir2,FB,sizeof(double)*3);
+
+  cudaMemcpy(d_dir1, dir1, 3*sizeof(double), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_dir2, dir2, 3*sizeof(double), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_center,center,3*sizeof(double), cudaMemcpyHostToDevice);
+
+  numThread1D = 16;
+  dim3 threadsPerBlock2(numThread1D,numThread1D);
+  dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
+
+  kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+
+  errCu = cudaGetLastError();
+  if (errCu != cudaSuccess) 
+      printf("Error After kernel_cpr when clicking: %s\n", cudaGetErrorString(errCu));
+
+  errCu = cudaDeviceSynchronize();
+  if (errCu != cudaSuccess) 
+      printf("Error Sync After kernel_cpr when clicking: %s\n", cudaGetErrorString(errCu));
+
+  cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+
+  short width = size[0];
+  short height = size[1];
+  
+  quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+  setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+
+  viewer2.current();
+  hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+  
+  viewer.current();
+  glm::mat4 fmat2 = glm::mat4();
+    
+  fmat2[0][0] = spherescale;
+  fmat2[1][1] = spherescale;
+  fmat2[2][2] = spherescale;
+  fmat2[3][0] = center[0];
+  fmat2[3][1] = center[1];
+  fmat2[3][2] = center[2];
+  hpld_inter->model(fmat2);  
+}
+
 int
 main(int argc, const char **argv) {
   const char *me;
@@ -1723,6 +1857,11 @@ main(int argc, const char **argv) {
                             arr_center[(i+1)*3+0], arr_center[(i+1)*3+1], arr_center[(i+1)*3+2]));
     countls += (dis*density);
   }
+
+  int *ptotime = new int[countls];
+  double *ptofrac = new double[countls];
+  int *timetop = new int[countline];
+  memset(timetop,0,sizeof(int)*countline);
   limnPolyData *lpld3 = limnPolyDataNew();
 
   limnPolyDataAlloc(lpld3, 0, countls, countls, 1);
@@ -1734,6 +1873,7 @@ main(int argc, const char **argv) {
                             arr_center[(i+1)*3+0], arr_center[(i+1)*3+1], arr_center[(i+1)*3+2]));
     int countseg = dis*density;
     double tsep = 1.0/((double)countseg);
+    timetop[i] = cpointind;
     for (int j=0; j<countseg; j++)
     {
       double curpoint[3];
@@ -1741,7 +1881,10 @@ main(int argc, const char **argv) {
         curpoint[k] = cubicFilter<double>((double)j*tsep, arr_center[(i-1)*3+k], arr_center[(i)*3+k], arr_center[(i+1)*3+k], arr_center[(i+2)*3+k]);
       ELL_4V_SET(lpld3->xyzw + 4*cpointind, curpoint[0],curpoint[1],curpoint[2], 1.0);  
       lpld3->indx[cpointind] = cpointind;
-      cpointind++;
+
+      ptotime[cpointind] = i;
+      ptofrac[cpointind] = j*tsep;
+      cpointind++;      
     }
   }  
   lpld3->type[0] = limnPrimitiveLineStrip;
@@ -2379,7 +2522,8 @@ main(int argc, const char **argv) {
     tex1.addressMode[1] = cudaAddressModeBorder;
     tex1.addressMode[2] = cudaAddressModeBorder;
     cudaBindTextureToArray(tex1, d_curvolarr, channelDesc);    
-    double alpha = 0.5;
+    int curinterp = (timetop[1]+timetop[2])/2;
+    double alpha = ptofrac[curinterp];
     cudaError_t errCu;
 
     float *d_volmem;
@@ -2602,6 +2746,34 @@ main(int argc, const char **argv) {
   while(!Hale::finishing){
     glfwWaitEvents();
     int keyPressed = viewer.getKeyPressed();
+    if (keyPressed == GLFW_KEY_LEFT)
+    {      
+      if (curinterp>0)
+      {
+        curinterp--;
+        interpolVolAndRender(curVolInMem, ptotime[curinterp], ptofrac[curinterp], queue, arr_nameid, 
+                            arr_center, pathprefix, mop, pixSize, dim, size, 
+                            eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, 
+                            d_dim, d_size, d_dir1, d_dir2, d_center, imageDouble, d_imageDouble,
+                            imageQuantized, viewer, viewer2, hpldview2, 
+                            hpld_inter, spherescale_inter);        
+      }      
+    }
+    else
+      if (keyPressed == GLFW_KEY_RIGHT)
+      {
+        if (curinterp<countls-1)
+        {
+          curinterp++;
+          interpolVolAndRender(curVolInMem, ptotime[curinterp], ptofrac[curinterp], queue, arr_nameid, 
+                              arr_center, pathprefix, mop, pixSize, dim, size, 
+                              eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, 
+                              d_dim, d_size, d_dir1, d_dir2, d_center, imageDouble, d_imageDouble,
+                              imageQuantized, viewer, viewer2, hpldview2, 
+                              hpld_inter, spherescale_inter);        
+        }      
+      }
+
     if (stateBKey!=viewer.getStateBKey())
     {
       stateBKey = viewer.getStateBKey();
@@ -2807,9 +2979,10 @@ main(int argc, const char **argv) {
               }
             }        
           }
-          int numsample = 20;
+          //int numsample = 20;
           dismin = INT_MAX;
           double mint = -1;
+          /*
           for (int i=0; i<=numsample; i++)
           {
             double t = (double)i/(double)numsample;
@@ -2825,6 +2998,21 @@ main(int argc, const char **argv) {
               dismin = dis;
               mint = t;
             }
+          }
+          */
+          int curp = timetop[mini];
+          while (curp<countls && ptotime[curp]==mini)
+          {
+            glm::vec4 curposview = convertWorldToViewPos(lpld3->xyzw[curp*4+0],lpld3->xyzw[curp*4+1],lpld3->xyzw[curp*4+2],&viewer);
+            double dis = diss2P(wposview.x,wposview.y,1,curposview.x,curposview.y,1);
+
+            if (dis<dismin)
+            {
+              dismin = dis;
+              mint = ptofrac[curp];
+              curinterp = curp;
+            }            
+            curp++;
           }
 
           if (curVolInMem != mini)

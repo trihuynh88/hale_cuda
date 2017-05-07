@@ -1411,7 +1411,7 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   double *eigenvec, double verextent2, double swidth, double sstep, int nOutChannel, float *d_volmem, 
   int *d_dim, int *d_size, double *d_dir1, double *d_dir2, double *d_center, double *imageDouble, double *d_imageDouble,
   unsigned char *imageQuantized, Hale::Viewer &viewer, Hale::Viewer &viewer2, Hale::Polydata *hpldview2, 
-  Hale::Polydata *hpld_inter, double spherescale)
+  Hale::Polydata *hpld_inter, double spherescale, Hale::Polydata *hpld_sq_inter)
 {
   int count;
   double dir1[3],dir2[3],center[3];
@@ -1538,6 +1538,33 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   fmat2[3][1] = center[1];
   fmat2[3][2] = center[2];
   hpld_inter->model(fmat2);  
+
+  glm::mat4 tmat_sq_inter = glm::mat4();
+  
+  tmat_sq_inter[0][0] = FN[0];
+  tmat_sq_inter[0][1] = FN[1];
+  tmat_sq_inter[0][2] = FN[2];
+  tmat_sq_inter[0][3] = 0;
+  tmat_sq_inter[1][0] = FB[0];
+  tmat_sq_inter[1][1] = FB[1];
+  tmat_sq_inter[1][2] = FB[2];
+  tmat_sq_inter[1][3] = 0;
+  tmat_sq_inter[2][0] = FT[0];
+  tmat_sq_inter[2][1] = FT[1];
+  tmat_sq_inter[2][2] = FT[2];
+  tmat_sq_inter[2][3] = 0;
+  tmat_sq_inter[3][0] = center[0];
+  tmat_sq_inter[3][1] = center[1];
+  tmat_sq_inter[3][2] = center[2];
+  tmat_sq_inter[3][3] = 1;
+  
+  glm::mat4 smat_sq_inter = glm::mat4();
+  smat_sq_inter[0][0] = 2;
+  smat_sq_inter[1][1] = 2;
+  glm::mat4 fmat_sq_inter = tmat_sq_inter*smat_sq_inter;
+
+  hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+  hpld_sq_inter->model(fmat_sq_inter);    
 }
 
 int
@@ -2621,9 +2648,54 @@ main(int argc, const char **argv) {
     setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
 
     hpldview2->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
+    //add the MIP in the interpolated position
+    viewer.current();
+    limnPolyData *lpld_sq_inter = limnPolyDataNew();
+    limnPolyDataSquare(lpld_sq_inter, 1 << limnPolyDataInfoNorm | 1 << limnPolyDataInfoTex2);
+    
+    Hale::Polydata *hpld_sq_inter = new Hale::Polydata(lpld_sq_inter, true,
+                         NULL,
+                         "square");
+    Hale::Program *newprog3 = new Hale::Program("tex-vert-cpr.glsl","texdemo-frag.glsl");
+    newprog3->compile();
+    newprog3->bindAttribute(Hale::vertAttrIdxXYZW, "positionVA");
+    newprog3->bindAttribute(Hale::vertAttrIdxRGBA, "colorVA");
+    newprog3->bindAttribute(Hale::vertAttrIdxNorm, "normalVA");
+    newprog3->bindAttribute(Hale::vertAttrIdxTex2, "tex2VA");
+    newprog3->link();  
+
+    hpld_sq_inter->program(newprog3);
+    
+    glm::mat4 tmat_sq_inter = glm::mat4();
+    
+    tmat_sq_inter[0][0] = FN[0];
+    tmat_sq_inter[0][1] = FN[1];
+    tmat_sq_inter[0][2] = FN[2];
+    tmat_sq_inter[0][3] = 0;
+    tmat_sq_inter[1][0] = FB[0];
+    tmat_sq_inter[1][1] = FB[1];
+    tmat_sq_inter[1][2] = FB[2];
+    tmat_sq_inter[1][3] = 0;
+    tmat_sq_inter[2][0] = FT[0];
+    tmat_sq_inter[2][1] = FT[1];
+    tmat_sq_inter[2][2] = FT[2];
+    tmat_sq_inter[2][3] = 0;
+    tmat_sq_inter[3][0] = center[0];
+    tmat_sq_inter[3][1] = center[1];
+    tmat_sq_inter[3][2] = center[2];
+    tmat_sq_inter[3][3] = 1;
+    
+    glm::mat4 smat_sq_inter = glm::mat4();
+    smat_sq_inter[0][0] = 2;
+    smat_sq_inter[1][1] = 2;
+    glm::mat4 fmat_sq_inter = tmat_sq_inter*smat_sq_inter;
+
+    hpld_sq_inter->model(fmat_sq_inter);    
+    hpld_sq_inter->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);    
+    scene.add(hpld_sq_inter);
 
     //add a sphere for the interpolated position
-    viewer.current();
+    
     limnPolyData *lpld2 = limnPolyDataNew();
     limnPolyDataIcoSphere(lpld2, 1 << limnPolyDataInfoNorm, 3);
 
@@ -2756,7 +2828,7 @@ main(int argc, const char **argv) {
                             eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, 
                             d_dim, d_size, d_dir1, d_dir2, d_center, imageDouble, d_imageDouble,
                             imageQuantized, viewer, viewer2, hpldview2, 
-                            hpld_inter, spherescale_inter);        
+                            hpld_inter, spherescale_inter, hpld_sq_inter);        
       }      
     }
     else
@@ -2770,7 +2842,7 @@ main(int argc, const char **argv) {
                               eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, 
                               d_dim, d_size, d_dir1, d_dir2, d_center, imageDouble, d_imageDouble,
                               imageQuantized, viewer, viewer2, hpldview2, 
-                              hpld_inter, spherescale_inter);        
+                              hpld_inter, spherescale_inter, hpld_sq_inter);        
         }      
       }
 

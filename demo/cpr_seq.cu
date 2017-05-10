@@ -27,7 +27,7 @@ cudaArray *d_volumeArray0 = 0;
 cudaArray *d_volumeArray1 = 0;
 cudaArray *d_volumeArray2 = 0;
 */
-#define NTEX 7
+#define NTEX 6
 //texture<float, 3, cudaReadModeElementType> tex[NTEX];
 //+1 for an extra volume for interpolation
 cudaArray *d_volumeArray[NTEX+1];
@@ -1249,7 +1249,7 @@ glm::vec4 convertWorldToViewPos(double x, double y, double z, Hale::Viewer *view
 
 void mainInit()
 {
-  for (int i=0; i<NTEX; i++)
+  for (int i=0; i<=NTEX; i++)
     d_volumeArray[i] = 0;
 }
 
@@ -1460,6 +1460,10 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
       printf("Error Sync After kernel_nterpol when clicking: %s\n", cudaGetErrorString(errCu));
 
   //copy from device's global mem to texture mem
+  if (!d_volumeArray[NTEX])
+  {
+    cudaMalloc3DArray(&d_volumeArray[NTEX], &channelDesc, volumeSize);
+  }
   cudaMemcpy3DParms copyParams0 = {0};
   copyParams0.srcPtr   = make_cudaPitchedPtr((void*)d_volmem, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
   copyParams0.dstArray = d_volumeArray[NTEX];
@@ -1539,6 +1543,7 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   fmat2[3][2] = center[2];
   hpld_inter->model(fmat2);  
 
+  viewer.current();
   glm::mat4 tmat_sq_inter = glm::mat4();
   
   tmat_sq_inter[0][0] = FN[0];
@@ -1563,8 +1568,10 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   smat_sq_inter[1][1] = 2;
   glm::mat4 fmat_sq_inter = tmat_sq_inter*smat_sq_inter;
 
-  hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
   hpld_sq_inter->model(fmat_sq_inter);    
+  viewer.current();
+  hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+  //hpld_sq_inter->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);    
 }
 
 int
@@ -1649,6 +1656,7 @@ main(int argc, const char **argv) {
 
   /* Compute threshold (isovalue) */
   cout<<"After TEEM processing of input arguments"<<endl;
+  mainInit();
 
   int countline = 0;
   string line;
@@ -2277,12 +2285,12 @@ main(int argc, const char **argv) {
           printf("Error in memcpy of d_dim: %s \n", cudaGetErrorString(errCu) );
           exit(1);
       }
-      errCu = cudaMalloc(&d_dir1, sizeof(dir1));
+      errCu = cudaMalloc(&d_dir1, 3*sizeof(double));
       if ( cudaSuccess != errCu ){
           printf("Error in Malloc or memcpy: %s \n", cudaGetErrorString(errCu) );
           exit(1);
       }      
-      errCu = cudaMalloc(&d_dir2, sizeof(dir2));      
+      errCu = cudaMalloc(&d_dir2, 3*sizeof(double));      
       if ( cudaSuccess != errCu ){
           printf("Error in Malloc or memcpy: %s \n", cudaGetErrorString(errCu) );
           exit(1);
@@ -2573,12 +2581,27 @@ main(int argc, const char **argv) {
     errCu = cudaDeviceSynchronize();
     if (errCu != cudaSuccess) 
         printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+    if (!d_volumeArray[NTEX])
+    {
+      cudaMalloc3DArray(&d_volumeArray[NTEX], &channelDesc, volumeSize);
+      printf("d_volumeArray[NTEX] allocated\n");
+    }
+
+    errCu = cudaGetLastError();
+    if (errCu != cudaSuccess) 
+        printf("Error after allocating d_volumeArray[NTEX]: %s\n", cudaGetErrorString(errCu));
+
     cudaMemcpy3DParms copyParams0 = {0};
     copyParams0.srcPtr   = make_cudaPitchedPtr((void*)d_volmem, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
     copyParams0.dstArray = d_volumeArray[NTEX];
     copyParams0.extent   = volumeSize;
     copyParams0.kind     = cudaMemcpyDeviceToDevice;
     cudaMemcpy3D(&copyParams0);
+
+    errCu = cudaGetLastError();
+    if (errCu != cudaSuccess) 
+        printf("Error after copying mem from d_volmem to d_volumeArray[NTEX]: %s\n", cudaGetErrorString(errCu));
 
     //cudaArray* d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
     tex2.normalized = false;                    
@@ -2588,6 +2611,10 @@ main(int argc, const char **argv) {
     tex2.addressMode[2] = cudaAddressModeBorder;
     cudaBindTextureToArray(tex2, d_volumeArray[NTEX], channelDesc);       
   
+    errCu = cudaGetLastError();
+    if (errCu != cudaSuccess) 
+        printf("Error after copying mem from d_volmem to tex2: %s\n", cudaGetErrorString(errCu));
+
     count = 1;
     for (int i=0; i<3; i++)
       center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
@@ -2621,19 +2648,43 @@ main(int argc, const char **argv) {
     printf("Interpolation: N = %f %f %f, B = %f %f %f, T = %f %f %f, dotNB = %f, dotNT = %f, dotBT = %f\n",FN[0],FN[1],FN[2],FB[0],FB[1],FB[2],FT[0],FT[1],FT[2],
       dotProduct(FN,FB,3),dotProduct(FN,FT,3),dotProduct(FB,FT,3));
 
-    cudaMemcpy(d_dir1, dir1, 3*sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_dir2, dir2, 3*sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_center,center,3*sizeof(double), cudaMemcpyHostToDevice);
+    //cudaMemcpy(d_dir1, dir1, 3*sizeof(double), cudaMemcpyHostToDevice);
+    //cudaMemcpy(d_dir2, dir2, 3*sizeof(double), cudaMemcpyHostToDevice);
+    //cudaMemcpy(d_center,center,3*sizeof(double), cudaMemcpyHostToDevice);
+
+    errCu = cudaMemcpy(d_dir1, dir1, 3*sizeof(double), cudaMemcpyHostToDevice);
+      if ( cudaSuccess != errCu ){
+          printf("Error in memcpy: %s \n", cudaGetErrorString(errCu) );
+          exit(1);
+      }      
+    errCu = cudaMemcpy(d_dir2, dir2, 3*sizeof(double), cudaMemcpyHostToDevice);
+      if ( cudaSuccess != errCu ){
+          printf("Error in memcpy: %s \n", cudaGetErrorString(errCu) );
+          exit(1);
+      }            
+    errCu = cudaMemcpy(d_center, center, 3*sizeof(double), cudaMemcpyHostToDevice);
+      if ( cudaSuccess != errCu ){
+          printf("Error in memcpy: %s \n", cudaGetErrorString(errCu) );
+          exit(1);
+      }      
+
+    errCu = cudaGetLastError();
+    if (errCu != cudaSuccess) 
+        printf("Error before kernel_cpr of the first interpolated point: %s\n", cudaGetErrorString(errCu));
 
     numThread1D = 16;
     dim3 threadsPerBlock2(numThread1D,numThread1D);
     dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
+    errCu = cudaGetLastError();
+    if (errCu != cudaSuccess) 
+        printf("Error before kernel_cpr of the first interpolated point, after allocating blocksize: %s\n", cudaGetErrorString(errCu));    
+
     kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
     errCu = cudaGetLastError();
     if (errCu != cudaSuccess) 
-        printf("Error: %s\n", cudaGetErrorString(errCu));
+        printf("Error in kernel_cpr of the first interpolated point: %s\n", cudaGetErrorString(errCu));
 
     errCu = cudaDeviceSynchronize();
     if (errCu != cudaSuccess) 
@@ -2657,6 +2708,7 @@ main(int argc, const char **argv) {
                          NULL,
                          "square");
     Hale::Program *newprog3 = new Hale::Program("tex-vert-cpr.glsl","texdemo-frag.glsl");
+    //Hale::Program *newprog3 = new Hale::Program("texdemo-vert.glsl","texdemo-frag.glsl");
     newprog3->compile();
     newprog3->bindAttribute(Hale::vertAttrIdxXYZW, "positionVA");
     newprog3->bindAttribute(Hale::vertAttrIdxRGBA, "colorVA");
@@ -3051,271 +3103,274 @@ main(int argc, const char **argv) {
               }
             }        
           }
-          //int numsample = 20;
-          dismin = INT_MAX;
-          double mint = -1;
-          /*
-          for (int i=0; i<=numsample; i++)
+          if (mini>0)
           {
-            double t = (double)i/(double)numsample;
-            double center[3];
-            for (int j=0; j<3; j++)
-              center[j] = cubicFilter<double>(t, arr_center[(mini-1)*3+j], arr_center[(mini)*3+j], arr_center[(mini+1)*3+j], arr_center[(mini+2)*3+j]);
-            glm::vec4 curposview = convertWorldToViewPos(center[0],center[1],center[2],&viewer);
-            //double dis = diss2P(wposview.x,wposview.y,wposview.z,curposview.x,curposview.y,curposview.z);
-            double dis = diss2P(wposview.x,wposview.y,1,curposview.x,curposview.y,1);
-
-            if (dis<dismin)
-            {
-              dismin = dis;
-              mint = t;
-            }
-          }
-          */
-          int curp = timetop[mini];
-          while (curp<countls && ptotime[curp]==mini)
-          {
-            glm::vec4 curposview = convertWorldToViewPos(lpld3->xyzw[curp*4+0],lpld3->xyzw[curp*4+1],lpld3->xyzw[curp*4+2],&viewer);
-            double dis = diss2P(wposview.x,wposview.y,1,curposview.x,curposview.y,1);
-
-            if (dis<dismin)
-            {
-              dismin = dis;
-              mint = ptofrac[curp];
-              curinterp = curp;
-            }            
-            curp++;
-          }
-
-          if (curVolInMem != mini)
-          {
-            curVolInMem = mini;
-            //find lerping between 2 volumes
-            count = mini;
+            //int numsample = 20;
+            dismin = INT_MAX;
+            double mint = -1;
             /*
-            curnameind = arr_nameid[count];
-            sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
-            if (nrrdLoad(nin, inname, NULL)) {
-              err = biffGetDone(NRRD);
-              fprintf(stderr, "%s: trouble reading \"%s\":\n%s", me, inname, err);
-              free(err);
-              return;
-            }
-
-            cout<<"read file "<<inname<<endl;
-            unsigned int pixSize;
-            cudaChannelFormatDesc channelDesc;
-            pixSize = sizeof(float);
-            channelDesc = cudaCreateChannelDesc<float>();
-
-            if (3 != nin->dim && 3 != nin->spaceDim) {
-                fprintf(stderr, "%s: need 3D array in 3D space, (not %uD in %uD)\n",
-                argv[0], nin->dim, nin->spaceDim);
-                airMopError(mop); exit(1);
-            }
-
-            int dim[4];
-            if (nin->dim == 3)
+            for (int i=0; i<=numsample; i++)
             {
-                dim[0] = 1;
-                dim[1] = nin->axis[0].size;
-                dim[2] = nin->axis[1].size;
-                dim[3] = nin->axis[2].size;
+              double t = (double)i/(double)numsample;
+              double center[3];
+              for (int j=0; j<3; j++)
+                center[j] = cubicFilter<double>(t, arr_center[(mini-1)*3+j], arr_center[(mini)*3+j], arr_center[(mini+1)*3+j], arr_center[(mini+2)*3+j]);
+              glm::vec4 curposview = convertWorldToViewPos(center[0],center[1],center[2],&viewer);
+              //double dis = diss2P(wposview.x,wposview.y,wposview.z,curposview.x,curposview.y,curposview.z);
+              double dis = diss2P(wposview.x,wposview.y,1,curposview.x,curposview.y,1);
+
+              if (dis<dismin)
+              {
+                dismin = dis;
+                mint = t;
+              }
             }
-            else //4-channel
+            */
+            int curp = timetop[mini];
+            while (curp<countls && ptotime[curp]==mini)
             {
-                dim[0] = nin->axis[0].size;
-                dim[1] = nin->axis[1].size;
-                dim[2] = nin->axis[2].size;
-                dim[3] = nin->axis[3].size;
-            }
-            int channel = 1;
+              glm::vec4 curposview = convertWorldToViewPos(lpld3->xyzw[curp*4+0],lpld3->xyzw[curp*4+1],lpld3->xyzw[curp*4+2],&viewer);
+              double dis = diss2P(wposview.x,wposview.y,1,curposview.x,curposview.y,1);
 
-            for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
+              if (dis<dismin)
+              {
+                dismin = dis;
+                mint = ptofrac[curp];
+                curinterp = curp;
+              }            
+              curp++;
+            }
+
+            if (curVolInMem != mini)
             {
-                filemem0[i] = ((short*)nin->data)[i*2];
-                filemem1[i] = ((short*)nin->data)[i*2+1];
-            }
+              curVolInMem = mini;
+              //find lerping between 2 volumes
+              count = mini;
+              /*
+              curnameind = arr_nameid[count];
+              sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
+              if (nrrdLoad(nin, inname, NULL)) {
+                err = biffGetDone(NRRD);
+                fprintf(stderr, "%s: trouble reading \"%s\":\n%s", me, inname, err);
+                free(err);
+                return;
+              }
 
-            //debug
-            for (int k=0; k<=2; k++)
-              for (int j=0; j<=2; j++)
-                for (int i=0; i<=2; i++)
-                  printf("volume 1: at (%d,%d,%d) = %f\n", i,j,k,filemem0[k*dim[1]*dim[2]+j*dim[1]+i]);
+              cout<<"read file "<<inname<<endl;
+              unsigned int pixSize;
+              cudaChannelFormatDesc channelDesc;
+              pixSize = sizeof(float);
+              channelDesc = cudaCreateChannelDesc<float>();
 
-            const cudaExtent volumeSize = make_cudaExtent(dim[1], dim[2], dim[3]);
+              if (3 != nin->dim && 3 != nin->spaceDim) {
+                  fprintf(stderr, "%s: need 3D array in 3D space, (not %uD in %uD)\n",
+                  argv[0], nin->dim, nin->spaceDim);
+                  airMopError(mop); exit(1);
+              }
 
-            if (!d_volumeArray[0])
-              cudaMalloc3DArray(&d_volumeArray[0], &channelDesc, volumeSize);
+              int dim[4];
+              if (nin->dim == 3)
+              {
+                  dim[0] = 1;
+                  dim[1] = nin->axis[0].size;
+                  dim[2] = nin->axis[1].size;
+                  dim[3] = nin->axis[2].size;
+              }
+              else //4-channel
+              {
+                  dim[0] = nin->axis[0].size;
+                  dim[1] = nin->axis[1].size;
+                  dim[2] = nin->axis[2].size;
+                  dim[3] = nin->axis[3].size;
+              }
+              int channel = 1;
 
-            cudaMemcpy3DParms copyParams0 = {0};
-            copyParams0.srcPtr   = make_cudaPitchedPtr((void*)filemem0, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
-            copyParams0.dstArray = d_volumeArray[0];
+              for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
+              {
+                  filemem0[i] = ((short*)nin->data)[i*2];
+                  filemem1[i] = ((short*)nin->data)[i*2+1];
+              }
+
+              //debug
+              for (int k=0; k<=2; k++)
+                for (int j=0; j<=2; j++)
+                  for (int i=0; i<=2; i++)
+                    printf("volume 1: at (%d,%d,%d) = %f\n", i,j,k,filemem0[k*dim[1]*dim[2]+j*dim[1]+i]);
+
+              const cudaExtent volumeSize = make_cudaExtent(dim[1], dim[2], dim[3]);
+
+              if (!d_volumeArray[0])
+                cudaMalloc3DArray(&d_volumeArray[0], &channelDesc, volumeSize);
+
+              cudaMemcpy3DParms copyParams0 = {0};
+              copyParams0.srcPtr   = make_cudaPitchedPtr((void*)filemem0, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
+              copyParams0.dstArray = d_volumeArray[0];
+              copyParams0.extent   = volumeSize;
+              copyParams0.kind     = cudaMemcpyHostToDevice;
+              cudaMemcpy3D(&copyParams0);
+              */
+              cudaError_t errCu;
+              cudaChannelFormatDesc channelDesc;
+              channelDesc = cudaCreateChannelDesc<float>();
+              cudaArray* d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+
+              tex0.normalized = false;                    
+              tex0.filterMode = cudaFilterModeLinear;     
+              tex0.addressMode[0] = cudaAddressModeBorder;
+              tex0.addressMode[1] = cudaAddressModeBorder;
+              tex0.addressMode[2] = cudaAddressModeBorder;
+              cudaBindTextureToArray(tex0, d_curvolarr, channelDesc);    
+
+              //read second file
+              count = mini+1;
+              /*
+              curnameind = arr_nameid[count];
+              sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
+              if (nrrdLoad(nin, inname, NULL)) {
+                err = biffGetDone(NRRD);
+                fprintf(stderr, "%s: trouble reading \"%s\":\n%s", me, inname, err);
+                free(err);
+                return;
+              }
+
+              cout<<"read file "<<inname<<endl;
+
+              if (3 != nin->dim && 3 != nin->spaceDim) {
+                  fprintf(stderr, "%s: need 3D array in 3D space, (not %uD in %uD)\n",
+                  argv[0], nin->dim, nin->spaceDim);
+                  airMopError(mop); exit(1);
+              }
+
+              for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
+              {
+                  filemem0[i] = ((short*)nin->data)[i*2];
+                  filemem1[i] = ((short*)nin->data)[i*2+1];
+              }
+
+              if (!d_volumeArray[1])
+                cudaMalloc3DArray(&d_volumeArray[1], &channelDesc, volumeSize);
+
+              cudaMemcpy3DParms copyParams1 = {0};
+              copyParams1.srcPtr   = make_cudaPitchedPtr((void*)filemem0, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
+              copyParams1.dstArray = d_volumeArray[1];
+              copyParams1.extent   = volumeSize;
+              copyParams1.kind     = cudaMemcpyHostToDevice;
+              cudaMemcpy3D(&copyParams1);
+              */
+              d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+              tex1.normalized = false;                    
+              tex1.filterMode = cudaFilterModeLinear;     
+              tex1.addressMode[0] = cudaAddressModeBorder;
+              tex1.addressMode[1] = cudaAddressModeBorder;
+              tex1.addressMode[2] = cudaAddressModeBorder;
+              cudaBindTextureToArray(tex1, d_curvolarr, channelDesc); 
+            }   
+
+            int numThread1D;
+            alpha = mint;
+            
+            numThread1D = 8;
+            dim3 threadsPerBlock(numThread1D,numThread1D,numThread1D);
+            dim3 numBlocks((dim[1]+numThread1D-1)/numThread1D,(dim[2]+numThread1D-1)/numThread1D,(dim[3]+numThread1D-1)/numThread1D);
+
+            double alpha = mint;
+            kernel_interpol<<<numBlocks,threadsPerBlock>>>(d_volmem,d_dim,alpha);
+
+            cudaError_t errCu = cudaGetLastError();
+            if (errCu != cudaSuccess) 
+                printf("Error After kernel_nterpol when clicking: %s\n", cudaGetErrorString(errCu));
+
+            errCu = cudaDeviceSynchronize();
+            if (errCu != cudaSuccess) 
+                printf("Error Sync After kernel_nterpol when clicking: %s\n", cudaGetErrorString(errCu));
+
+            //copy from device's global mem to texture mem
+            copyParams0.srcPtr   = make_cudaPitchedPtr((void*)d_volmem, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
+            copyParams0.dstArray = d_volumeArray[NTEX];
             copyParams0.extent   = volumeSize;
-            copyParams0.kind     = cudaMemcpyHostToDevice;
+            copyParams0.kind     = cudaMemcpyDeviceToDevice;
             cudaMemcpy3D(&copyParams0);
-            */
-            cudaError_t errCu;
-            cudaChannelFormatDesc channelDesc;
-            channelDesc = cudaCreateChannelDesc<float>();
-            cudaArray* d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
 
-            tex0.normalized = false;                    
-            tex0.filterMode = cudaFilterModeLinear;     
-            tex0.addressMode[0] = cudaAddressModeBorder;
-            tex0.addressMode[1] = cudaAddressModeBorder;
-            tex0.addressMode[2] = cudaAddressModeBorder;
-            cudaBindTextureToArray(tex0, d_curvolarr, channelDesc);    
+            tex2.normalized = false;                    
+            tex2.filterMode = cudaFilterModeLinear;     
+            tex2.addressMode[0] = cudaAddressModeBorder;
+            tex2.addressMode[1] = cudaAddressModeBorder;
+            tex2.addressMode[2] = cudaAddressModeBorder;
+            cudaBindTextureToArray(tex2, d_volumeArray[NTEX], channelDesc);       
+            
+            //after that call the normal kernel to do MIP
+            count = mini;
+            for (int i=0; i<3; i++)
+              center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
-            //read second file
-            count = mini+1;
-            /*
-            curnameind = arr_nameid[count];
-            sprintf(inname,"%s/%d.nrrd",pathprefix,curnameind);
-            if (nrrdLoad(nin, inname, NULL)) {
-              err = biffGetDone(NRRD);
-              fprintf(stderr, "%s: trouble reading \"%s\":\n%s", me, inname, err);
-              free(err);
-              return;
-            }
+            printf("center = %f %f %f\n", center[0],center[1],center[2]);
+            
+            double FT[3];
+            double FN[3],FB[3];
+            double dr[3],ddr[3];
+            for (int i=0; i<3; i++)
+              dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
-            cout<<"read file "<<inname<<endl;
+            for (int i=0; i<3; i++)
+              ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
-            if (3 != nin->dim && 3 != nin->spaceDim) {
-                fprintf(stderr, "%s: need 3D array in 3D space, (not %uD in %uD)\n",
-                argv[0], nin->dim, nin->spaceDim);
-                airMopError(mop); exit(1);
-            }
+            printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
+            printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
+            normalize(dr,3);
+            normalize(ddr,3);
+            printf("after normalizing\n");
+            printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
+            printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
 
-            for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
-            {
-                filemem0[i] = ((short*)nin->data)[i*2];
-                filemem1[i] = ((short*)nin->data)[i*2+1];
-            }
+            memcpy(FT,dr,sizeof(double)*3);
+            memcpy(FN,eigenvec,sizeof(double)*3);
+            normalize(FN,3);
+            cross(FT,FN,FB);
+            cross(FB,FT,FN);
+            memcpy(dir1,FN,sizeof(double)*3);
+            memcpy(dir2,FB,sizeof(double)*3);
+            printf("Interpolation: N = %f %f %f, B = %f %f %f, T = %f %f %f, dotNB = %f, dotNT = %f, dotBT = %f\n",FN[0],FN[1],FN[2],FB[0],FB[1],FB[2],FT[0],FT[1],FT[2],
+              dotProduct(FN,FB,3),dotProduct(FN,FT,3),dotProduct(FB,FT,3));
 
-            if (!d_volumeArray[1])
-              cudaMalloc3DArray(&d_volumeArray[1], &channelDesc, volumeSize);
+            cudaMemcpy(d_dir1, dir1, 3*sizeof(double), cudaMemcpyHostToDevice);
+            cudaMemcpy(d_dir2, dir2, 3*sizeof(double), cudaMemcpyHostToDevice);
+            cudaMemcpy(d_center,center,3*sizeof(double), cudaMemcpyHostToDevice);
 
-            cudaMemcpy3DParms copyParams1 = {0};
-            copyParams1.srcPtr   = make_cudaPitchedPtr((void*)filemem0, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
-            copyParams1.dstArray = d_volumeArray[1];
-            copyParams1.extent   = volumeSize;
-            copyParams1.kind     = cudaMemcpyHostToDevice;
-            cudaMemcpy3D(&copyParams1);
-            */
-            d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
-            tex1.normalized = false;                    
-            tex1.filterMode = cudaFilterModeLinear;     
-            tex1.addressMode[0] = cudaAddressModeBorder;
-            tex1.addressMode[1] = cudaAddressModeBorder;
-            tex1.addressMode[2] = cudaAddressModeBorder;
-            cudaBindTextureToArray(tex1, d_curvolarr, channelDesc); 
-          }   
+            numThread1D = 16;
+            dim3 threadsPerBlock2(numThread1D,numThread1D);
+            dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
-          int numThread1D;
-          alpha = mint;
-          
-          numThread1D = 8;
-          dim3 threadsPerBlock(numThread1D,numThread1D,numThread1D);
-          dim3 numBlocks((dim[1]+numThread1D-1)/numThread1D,(dim[2]+numThread1D-1)/numThread1D,(dim[3]+numThread1D-1)/numThread1D);
+            kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
-          double alpha = mint;
-          kernel_interpol<<<numBlocks,threadsPerBlock>>>(d_volmem,d_dim,alpha);
+            errCu = cudaGetLastError();
+            if (errCu != cudaSuccess) 
+                printf("Error After kernel_cpr when clicking: %s\n", cudaGetErrorString(errCu));
 
-          cudaError_t errCu = cudaGetLastError();
-          if (errCu != cudaSuccess) 
-              printf("Error After kernel_nterpol when clicking: %s\n", cudaGetErrorString(errCu));
+            errCu = cudaDeviceSynchronize();
+            if (errCu != cudaSuccess) 
+                printf("Error Sync After kernel_cpr when clicking: %s\n", cudaGetErrorString(errCu));
 
-          errCu = cudaDeviceSynchronize();
-          if (errCu != cudaSuccess) 
-              printf("Error Sync After kernel_nterpol when clicking: %s\n", cudaGetErrorString(errCu));
+            cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
 
-          //copy from device's global mem to texture mem
-          copyParams0.srcPtr   = make_cudaPitchedPtr((void*)d_volmem, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
-          copyParams0.dstArray = d_volumeArray[NTEX];
-          copyParams0.extent   = volumeSize;
-          copyParams0.kind     = cudaMemcpyDeviceToDevice;
-          cudaMemcpy3D(&copyParams0);
+            short width = size[0];
+            short height = size[1];
+            
+            quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
 
-          tex2.normalized = false;                    
-          tex2.filterMode = cudaFilterModeLinear;     
-          tex2.addressMode[0] = cudaAddressModeBorder;
-          tex2.addressMode[1] = cudaAddressModeBorder;
-          tex2.addressMode[2] = cudaAddressModeBorder;
-          cudaBindTextureToArray(tex2, d_volumeArray[NTEX], channelDesc);       
-          
-          //after that call the normal kernel to do MIP
-          count = mini;
-          for (int i=0; i<3; i++)
-            center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+            viewer2.current();
+            hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+            
+            viewer.current();
 
-          printf("center = %f %f %f\n", center[0],center[1],center[2]);
-          
-          double FT[3];
-          double FN[3],FB[3];
-          double dr[3],ddr[3];
-          for (int i=0; i<3; i++)
-            dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-
-          for (int i=0; i<3; i++)
-            ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-
-          printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
-          printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
-          normalize(dr,3);
-          normalize(ddr,3);
-          printf("after normalizing\n");
-          printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
-          printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
-
-          memcpy(FT,dr,sizeof(double)*3);
-          memcpy(FN,eigenvec,sizeof(double)*3);
-          normalize(FN,3);
-          cross(FT,FN,FB);
-          cross(FB,FT,FN);
-          memcpy(dir1,FN,sizeof(double)*3);
-          memcpy(dir2,FB,sizeof(double)*3);
-          printf("Interpolation: N = %f %f %f, B = %f %f %f, T = %f %f %f, dotNB = %f, dotNT = %f, dotBT = %f\n",FN[0],FN[1],FN[2],FB[0],FB[1],FB[2],FT[0],FT[1],FT[2],
-            dotProduct(FN,FB,3),dotProduct(FN,FT,3),dotProduct(FB,FT,3));
-
-          cudaMemcpy(d_dir1, dir1, 3*sizeof(double), cudaMemcpyHostToDevice);
-          cudaMemcpy(d_dir2, dir2, 3*sizeof(double), cudaMemcpyHostToDevice);
-          cudaMemcpy(d_center,center,3*sizeof(double), cudaMemcpyHostToDevice);
-
-          numThread1D = 16;
-          dim3 threadsPerBlock2(numThread1D,numThread1D);
-          dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
-
-          kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
-
-          errCu = cudaGetLastError();
-          if (errCu != cudaSuccess) 
-              printf("Error After kernel_cpr when clicking: %s\n", cudaGetErrorString(errCu));
-
-          errCu = cudaDeviceSynchronize();
-          if (errCu != cudaSuccess) 
-              printf("Error Sync After kernel_cpr when clicking: %s\n", cudaGetErrorString(errCu));
-
-          cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
-
-          short width = size[0];
-          short height = size[1];
-          
-          quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
-          setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
-
-          viewer2.current();
-          hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
-          
-          viewer.current();
-
-          printf("alpha = %f",alpha);
-          printf("center of the previous interpolated point: %f,%f,%f\n", fmat2[3][0],fmat2[3][1],fmat2[3][2]);
-          printf("center of the last interpolated point: %f,%f,%f\n", center[0],center[1],center[2]);
-          fmat2[3][0] = center[0];
-          fmat2[3][1] = center[1];
-          fmat2[3][2] = center[2];
-          hpld_inter->model(fmat2);
+            printf("alpha = %f",alpha);
+            printf("center of the previous interpolated point: %f,%f,%f\n", fmat2[3][0],fmat2[3][1],fmat2[3][2]);
+            printf("center of the last interpolated point: %f,%f,%f\n", center[0],center[1],center[2]);
+            fmat2[3][0] = center[0];
+            fmat2[3][1] = center[1];
+            fmat2[3][2] = center[2];
+            hpld_inter->model(fmat2);
+          }
         }
       }
     }

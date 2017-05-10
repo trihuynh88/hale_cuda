@@ -3132,18 +3132,22 @@ main(int argc, const char **argv) {
         int hposw = viewer.heightBuffer()-viewer.getLastY();
 
         double disgrad[2];
-        disgrad[0] = -(((float*)zbufferDis->data)[hposw*viewer.widthBuffer()+wposw+1]-((float*)zbufferDis->data)[hposw*viewer.widthBuffer()+wposw-1]);
-        disgrad[1] = -(((float*)zbufferDis->data)[(hposw+1)*viewer.widthBuffer()+wposw]-((float*)zbufferDis->data)[(hposw-1)*viewer.widthBuffer()+wposw]);
-        if (disgrad[0] || disgrad[1])
+        disgrad[0] = disgrad[1] = 0;
+        if (wposw<viewer.widthBuffer()-1 && wposw>0 && hposw<viewer.heightBuffer()-1 && hposw>0)
         {
-          printf("after assigning, disgrad = %f,%f\n",disgrad[0],disgrad[1]);
-          normalize(disgrad,2);
-          printf("after normalizing, disgrad = %f,%f\n",disgrad[0],disgrad[1]);
-          double disval = ((float*)zbufferDis->data)[hposw*viewer.widthBuffer()+wposw];
-          printf("old wposw,hposw = %d,%d; disval = %f\n", wposw,hposw,disval);
-          wposw += (disval*disgrad[0]);
-          hposw += (disval*disgrad[1]);        
-          printf("jumped wposw,hposw = %d,%d\n", wposw,hposw);
+          disgrad[0] = -(((float*)zbufferDis->data)[hposw*viewer.widthBuffer()+wposw+1]-((float*)zbufferDis->data)[hposw*viewer.widthBuffer()+wposw-1]);
+          disgrad[1] = -(((float*)zbufferDis->data)[(hposw+1)*viewer.widthBuffer()+wposw]-((float*)zbufferDis->data)[(hposw-1)*viewer.widthBuffer()+wposw]);
+          if (disgrad[0] || disgrad[1])
+          {
+            printf("after assigning, disgrad = %f,%f\n",disgrad[0],disgrad[1]);
+            normalize(disgrad,2);
+            printf("after normalizing, disgrad = %f,%f\n",disgrad[0],disgrad[1]);
+            double disval = ((float*)zbufferDis->data)[hposw*viewer.widthBuffer()+wposw];
+            printf("old wposw,hposw = %d,%d; disval = %f\n", wposw,hposw,disval);
+            wposw += (disval*disgrad[0]);
+            hposw += (disval*disgrad[1]);        
+            printf("jumped wposw,hposw = %d,%d\n", wposw,hposw);
+          }
         }
         double dposw = zbufferC[hposw*viewer.widthBuffer()+wposw];
         printf("Drag Clicked (w,h,depth) = %d,%d,%f\n", wposw,hposw,dposw);

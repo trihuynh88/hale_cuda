@@ -1341,11 +1341,13 @@ public:
     pixSize = sizeof(float);
     channelDesc = cudaCreateChannelDesc<float>();
 
+    /*
     if (3 != nin->dim && 3 != nin->spaceDim) {
         fprintf(stderr, "%s: need 3D array in 3D space, (not %uD in %uD)\n",
         "Queue.push()", nin->dim, nin->spaceDim);
         airMopError(mop); exit(1);
     }
+    */
 
     if (nin->dim == 3)
     {
@@ -2855,7 +2857,7 @@ main(int argc, const char **argv) {
         maxz = zbuffer[i];
   }
   printf("minmaxz = (%f,%f)\n",minz,maxz );
-  saveImage<GLfloat>(viewer.widthBuffer(),viewer.heightBuffer(),1,zbuffer,"depth.tga");
+  saveImage<GLfloat>(viewer.widthBuffer(),viewer.heightBuffer(),1,zbuffer,"depth.tga"); 
 
   bool stateBKey = false;
   bool stateMKey = false;
@@ -2867,6 +2869,33 @@ main(int argc, const char **argv) {
   bool isHoldOn = false;
   bool checkPath = false;
   int stateBKeyInt = 0;
+  GLfloat* zbufferC = new GLfloat[viewer.widthBuffer()*viewer.heightBuffer()];
+  unsigned char *zbufferM = new unsigned char[viewer.widthBuffer()*viewer.heightBuffer()];
+  Nrrd *zbufferNin = nrrdNew();
+  Nrrd *zbufferDis = nrrdNew();
+  //saving approximately equidistant images for constructing space-time visualization
+  /*
+  for (int curptmp = 0; curptmp<countls; curptmp++)
+  {
+    interpolVolAndRender(curVolInMem, ptotime[curptmp], ptofrac[curptmp], queue, arr_nameid, 
+                            arr_center, pathprefix, mop, pixSize, dim, size, 
+                            eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, 
+                            d_dim, d_size, d_dir1, d_dir2, d_center, imageDouble, d_imageDouble,
+                            imageQuantized, viewer, viewer2, hpldview2, 
+                            hpld_inter, spherescale_inter, hpld_sq_inter);  
+    
+    sprintf(outnameslice,"spacetime_hp/im_%d.png",curptmp);
+    if (nrrdWrap_va(ndblpng, imageQuantized, nrrdTypeUChar, 3, 4, width, height)
+      || nrrdSave(outnameslice, ndblpng, NULL)
+          ) {
+      char *err = biffGetDone(NRRD);
+      printf("%s: couldn't save output:\n%s", argv[0], err);
+      free(err); nrrdNix(ndblpng);
+      exit(1);
+      }
+  } 
+  */
+
   while(!Hale::finishing){
     glfwWaitEvents();
     int keyPressed = viewer.getKeyPressed();
@@ -3042,7 +3071,7 @@ main(int argc, const char **argv) {
     {      
       if (!isHoldOn)
       {
-        GLfloat* zbufferC = new GLfloat[viewer.widthBuffer()*viewer.heightBuffer()];
+        
         glReadPixels(0,0,viewer.widthBuffer(),viewer.heightBuffer(),GL_DEPTH_COMPONENT,GL_FLOAT,zbufferC);  
         int wposwC = viewer.getClickedX();
         int hposwC = viewer.heightBuffer()-viewer.getClickedY();
@@ -3057,19 +3086,70 @@ main(int argc, const char **argv) {
         isHoldOn = true;
         checkPath = (dposwC<1.0);
         viewer.setPaused(checkPath);
+        if (checkPath)
+        {
+          printf("Inside checkPath of first click\n");
+          for (int ii=0; ii<viewer.widthBuffer()*viewer.heightBuffer(); ii++)
+          {
+            if (zbufferC[ii]!=1.0)
+              zbufferM[ii] = 255;
+            else
+              zbufferM[ii] = 0;
+          }
+          printf("after assigning zbufferM\n");
+          if (nrrdWrap_va(zbufferNin, zbufferM, nrrdTypeUChar, 2, viewer.widthBuffer(), viewer.heightBuffer())
+                ) {
+            char *err = biffGetDone(NRRD);
+            printf("%s: Error wrapping Nrrd:\n%s", argv[0], err);
+            free(err); nrrdNix(zbufferNin);
+            exit(1);
+            }
+          if (nrrdDistanceL2Signed(zbufferDis, zbufferNin,
+                     nrrdTypeFloat, NULL, 128, AIR_FALSE)) {
+            char *err = biffGetDone(NRRD);
+            printf("%s: Error doing distance transform:\n%s", argv[0], err);
+            free(err); nrrdNix(zbufferDis);
+            exit(1);
+            }
+
+
+          sprintf(outnameslice,"dis_trans.png");
+          if (nrrdSave(outnameslice, zbufferDis, NULL)) {
+            char *err = biffGetDone(NRRD);
+            printf("%s: Error saving distance transform:\n%s", argv[0], err);
+            free(err); nrrdNix(zbufferDis);
+            exit(1);
+          }
+
+        }
       }
       
       if (checkPath)
       {
-        GLfloat* zbuffer = new GLfloat[viewer.widthBuffer()*viewer.heightBuffer()];
-        glReadPixels(0,0,viewer.widthBuffer(),viewer.heightBuffer(),GL_DEPTH_COMPONENT,GL_FLOAT,zbuffer);  
+        //GLfloat* zbuffer = new GLfloat[viewer.widthBuffer()*viewer.heightBuffer()];
+        //glReadPixels(0,0,viewer.widthBuffer(),viewer.heightBuffer(),GL_DEPTH_COMPONENT,GL_FLOAT,zbuffer);  
         int wposw = viewer.getLastX();
         int hposw = viewer.heightBuffer()-viewer.getLastY();
-        double dposw = zbuffer[hposw*viewer.widthBuffer()+wposw];
+
+        double disgrad[2];
+        disgrad[0] = -(((float*)zbufferDis->data)[hposw*viewer.widthBuffer()+wposw+1]-((float*)zbufferDis->data)[hposw*viewer.widthBuffer()+wposw-1]);
+        disgrad[1] = -(((float*)zbufferDis->data)[(hposw+1)*viewer.widthBuffer()+wposw]-((float*)zbufferDis->data)[(hposw-1)*viewer.widthBuffer()+wposw]);
+        if (disgrad[0] || disgrad[1])
+        {
+          printf("after assigning, disgrad = %f,%f\n",disgrad[0],disgrad[1]);
+          normalize(disgrad,2);
+          printf("after normalizing, disgrad = %f,%f\n",disgrad[0],disgrad[1]);
+          double disval = ((float*)zbufferDis->data)[hposw*viewer.widthBuffer()+wposw];
+          printf("old wposw,hposw = %d,%d; disval = %f\n", wposw,hposw,disval);
+          wposw += (disval*disgrad[0]);
+          hposw += (disval*disgrad[1]);        
+          printf("jumped wposw,hposw = %d,%d\n", wposw,hposw);
+        }
+        double dposw = zbufferC[hposw*viewer.widthBuffer()+wposw];
         printf("Drag Clicked (w,h,depth) = %d,%d,%f\n", wposw,hposw,dposw);
         glm::vec4 wposview = convertDepthBuffToViewPos(wposw,hposw,dposw,&viewer);
         printf("Drag Clicked View Pos = %f,%f,%f\n", wposview.x,wposview.y,wposview.z);
-        if (dposw<1.0)
+        if (dposw<1.0 || disgrad[0] || disgrad[1])
         {
           double dismin = INT_MAX;
           int mini = -1;

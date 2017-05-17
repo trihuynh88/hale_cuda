@@ -10,6 +10,7 @@
 #include "lib/Image.h"
 #include <vector>
 #include <unordered_map>
+#include <time.h>
 
 using namespace std;
 
@@ -604,6 +605,21 @@ void computeHessian(double *hessian, double *p)
   hessian[cu_getIndex2(2,1,3,3)] = hessian[cu_getIndex2(1,2,3,3)];  
 }
 
+__device__
+void computeHessian(double *hessian, double *p,const texture<float, 3, cudaReadModeElementType> tex0)
+{
+  hessian[cu_getIndex2(0,0,3,3)]=tex3DBicubic_GGX<float,float>(tex0,p[0],p[1],p[2]);
+  hessian[cu_getIndex2(0,1,3,3)]=tex3DBicubic_GYGX<float,float>(tex0,p[0],p[1],p[2]);
+  hessian[cu_getIndex2(0,2,3,3)]=tex3DBicubic_GZGX<float,float>(tex0,p[0],p[1],p[2]);
+  hessian[cu_getIndex2(1,1,3,3)]=tex3DBicubic_GGY<float,float>(tex0,p[0],p[1],p[2]);
+  hessian[cu_getIndex2(1,2,3,3)]=tex3DBicubic_GZGY<float,float>(tex0,p[0],p[1],p[2]);
+  hessian[cu_getIndex2(2,2,3,3)]=tex3DBicubic_GGZ<float,float>(tex0,p[0],p[1],p[2]);
+
+  hessian[cu_getIndex2(1,0,3,3)] = hessian[cu_getIndex2(0,1,3,3)];
+  hessian[cu_getIndex2(2,0,3,3)] = hessian[cu_getIndex2(0,2,3,3)];
+  hessian[cu_getIndex2(2,1,3,3)] = hessian[cu_getIndex2(1,2,3,3)];  
+}
+
 __host__ __device__
 void cross(double *u, double *v, double *w)
 {
@@ -625,6 +641,19 @@ float lerp(float y0, float y1, float alpha)
   return y0*(1-alpha)+alpha*y1;
 }
 
+__device__
+double max3(double x, double y, double z)
+{
+    double max2 = (x>y?x:y);
+    return max2>z?max2:z;
+}
+
+__device__
+double clamp(double x0, double x1, double x)
+{
+  return (x<x0)?x0:((x>x1)?x1:x);
+}
+
 //interpolate the volume in between
 __global__
 void kernel_interpol(float *intervol, int* dim, float alpha)
@@ -642,6 +671,115 @@ void kernel_interpol(float *intervol, int* dim, float alpha)
       printf("inside kernel_interpol, val at (%d,%d,%d) = %f\n", i,j,k,intervol[k*dim[2]*dim[1] + j*dim[1] + i]);
       printf("inside kernel_interpol, tex0 at (%d,%d,%d) = %f\n",i,j,k, tex3D(tex0,i,j,k));
     }
+}
+
+//finding peak
+__global__
+void kernel_peak(int* dim, int *size, double verextent, double *center, double *dir1, double *dir2, double swidth, double sstep, int nOutChannel, double* imageDouble
+        )        
+{    
+    int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int j = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    if ((i>=size[0]) || (j>=size[1]))
+        return;
+
+    //temporary test
+    double refstep=sstep, thickness=0.5;
+    double phongKa=0.2, phongKd=0.8;
+    double light_dir[3]={0,0,1};
+    normalize(light_dir,3);
+
+    double pixsize = verextent/size[1];
+    int ni = i-size[0]/2;
+    int nj = size[1]/2 - j;
+    double pointi[3];
+    advancePoint(center,dir1,ni*pixsize,pointi);
+    advancePoint(pointi,dir2,nj*pixsize,pointi);
+
+    double mipdir[3];
+    cross(dir1,dir2,mipdir);
+    normalize(mipdir,3);    
+    
+    double curpoint[3];
+    int k;
+    for (k=0; k<3; k++)
+      curpoint[k] = pointi[k] - mipdir[k]*swidth/2;
+   
+    double indPoint[4];
+    double gradgfpi[3];    
+    double pointColor;
+    double alpha;
+    double valgfp;
+    double hessian[9];
+    double hessian_33[3][3];
+    double hessian_33inv[3][3];
+    double hessian_inv[9];
+    double peakdis[3];
+    double len_peakdis;
+    double pointColorGFP;
+    double alphaGFP;
+    double transpGFP = 1;
+    double accColorGFP = 0;
+
+    for (k=0; k<ceil(swidth/sstep); k++)
+    {
+        if (cu_isInsideDouble(curpoint[0],curpoint[1],curpoint[2],dim[1],dim[2],dim[3]))
+        {
+                computeHessian(hessian,curpoint,tex2);
+
+                memcpy(hessian_33,hessian,sizeof(double)*9);
+                invertMat33(hessian_33,hessian_33inv);
+                memcpy(hessian_inv,hessian_33inv,sizeof(double)*9);              
+
+                gradgfpi[0] = tex3DBicubic_GX<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);
+                gradgfpi[1] = tex3DBicubic_GY<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);
+                gradgfpi[2] = tex3DBicubic_GZ<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);
+                
+                cu_mulMatPoint3(hessian_inv,gradgfpi,peakdis);
+                scaleVector(peakdis,3,-1);
+                len_peakdis = lenVec(peakdis,3);
+    
+                double eigenval[3];
+                eigenOfHess(hessian,eigenval);
+                //printf("Inside kernel_peak, before checking if eigenval < 0\n");
+                if (eigenval[0]<0 && eigenval[1]<0 && eigenval[2]<0)
+                {                
+                  //printf("there is something with eigenval < 0\n");
+                  normalize(peakdis,3);
+                  double maxev = max3(eigenval[0],eigenval[1],eigenval[2]);
+                  pointColorGFP = phongKa + phongKd*max(0.0f,dotProduct(peakdis,light_dir,3));
+                  alphaGFP = cu_inAlphaX(len_peakdis-8,thickness);
+                  //printf("(i,j,k)=(%d,%d,%d); len_peakdis = %f, alphaGFP = %f\n", i,j,k, len_peakdis, alphaGFP);
+                  alphaGFP *= clamp(0,1,lerp(0,1,8.0,-maxev,10.0));
+                  //printf("(i,j,k)=(%d,%d,%d); -maxev = %f, after clamp(0,1,lerp(0,1,40.0,-maxev,41.0)): alphaGFP = %f\n", i,j,k,-maxev, alphaGFP);
+                  alphaGFP = 1 - pow(1-alphaGFP,sstep/refstep);
+                  //printf("(i,j,k)=(%d,%d,%d); after (1 - pow(1-alphaGFP,sstep/refstep)): alphaGFP = %f\n",i,j,k, alphaGFP);
+                  transpGFP *= (1-alphaGFP);
+                  accColorGFP = accColorGFP*(1-alphaGFP) + pointColorGFP*alphaGFP;
+                  //printf("(i,j,k)=(%d,%d,%d); accColorGFP = %f\n", accColorGFP);
+                }            
+        }
+
+        curpoint[0] = curpoint[0] + mipdir[0]*sstep;
+        curpoint[1] = curpoint[1] + mipdir[1]*sstep;
+        curpoint[2] = curpoint[2] + mipdir[2]*sstep;
+    }
+    
+    double accAlphaGFP = 1 - transpGFP;
+
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = 0;
+    if (accAlphaGFP>0)
+    {
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = accColorGFP/accAlphaGFP;
+    }
+    else
+    {
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = accColorGFP;  
+    }
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = 0;
+        
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = accAlphaGFP;    
 }
 
 //currently working in index-space
@@ -2864,6 +3002,7 @@ main(int argc, const char **argv) {
   bool stateNKey = false;
   bool stateZoom = false;
   bool stateXKey = false;
+  bool statePKey = false;
   double lastX, lastY;
   double verextent2 = verextent;
   bool isHoldOn = false;
@@ -2895,10 +3034,14 @@ main(int argc, const char **argv) {
       }
   } 
   */
-
+  int tmpcount = 0;
+  //clock_t begin = clock();
+  time_t start,end;
+  time (&start);
   while(!Hale::finishing){
     glfwWaitEvents();
     int keyPressed = viewer.getKeyPressed();
+    int keyPressed2 = viewer2.getKeyPressed();
     if (keyPressed == GLFW_KEY_LEFT)
     {      
       if (curinterp>0)
@@ -2990,7 +3133,64 @@ main(int argc, const char **argv) {
           scene.add(vsphere[i]);
       }
     }
+    //switching between maxima and MIP in window2
+    if (keyPressed2 == 'P')
+    {
+      tmpcount++;
+      //clock_t end = clock();
+      //double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
+      time (&end);
+      double dif = difftime (end,start);
+      printf("dif time = %f\n", dif);
+      if (dif>0.3)
+      {
+        time (&start);
+        statePKey = !statePKey;
+        printf("statePKey = %d\n",statePKey);
+        if (statePKey)
+        {
+            printf("statePKey = True, doing kernel_peak, tmpcount = %d\n",tmpcount);
+            kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
+            errCu = cudaGetLastError();
+            if (errCu != cudaSuccess) 
+                printf("Error: %s\n", cudaGetErrorString(errCu));
+
+            errCu = cudaDeviceSynchronize();
+            if (errCu != cudaSuccess) 
+                printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+            cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+            
+            quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+
+            viewer2.current();
+            hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+        }
+        else
+        {
+            printf("statePKey = false, doing kernel_cpr, tmpcount = %d\n",tmpcount);
+            kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+
+            errCu = cudaGetLastError();
+            if (errCu != cudaSuccess) 
+                printf("Error: %s\n", cudaGetErrorString(errCu));
+
+            errCu = cudaDeviceSynchronize();
+            if (errCu != cudaSuccess) 
+                printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+            cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+            
+            quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+
+            viewer2.current();
+            hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+        }
+      }
+    }
     //processing zooming in the second window (MIP image)
     if (stateZoom)
     {

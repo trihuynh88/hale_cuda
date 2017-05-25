@@ -823,7 +823,7 @@ void kernel_peak(int* dim, int *size, double verextent, double *center, double *
                   //printf("(i,j,k)=(%d,%d,%d); -maxev = %f, after clamp(0,1,lerp(0,1,40.0,-maxev,41.0)): alphaGFP = %f\n", i,j,k,-maxev, alphaGFP);
                   alphaGFP = 1 - pow(1-alphaGFP,sstep/refstep);
                   //debug purpose
-                  alphaGFP = 1.0;
+                  //alphaGFP = 1.0;
                   //printf("(i,j,k)=(%d,%d,%d); after (1 - pow(1-alphaGFP,sstep/refstep)): alphaGFP = %f\n",i,j,k, alphaGFP);
                   transpGFP *= (1-alphaGFP);
                   accColorGFP = accColorGFP*(1-alphaGFP) + pointColorGFP*alphaGFP;
@@ -1575,14 +1575,25 @@ public:
 
     if (!filemem0)
     {
+      printf("in Queue.push, dim=[%d,%d,%d,%d], before allocating filemem\n",dim[0],dim[1],dim[2],dim[3]);
       filemem0 = new float[dim[1]*dim[2]*dim[3]];
       filemem1 = new float[dim[1]*dim[2]*dim[3]];
     }
-
-    for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
+    printf("in Queue.push, before setting filemem\n");
+    if (nin->dim == 3)
     {
-        filemem0[i] = ((short*)nin->data)[i*2];
-        filemem1[i] = ((short*)nin->data)[i*2+1];
+      for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
+      {
+          filemem0[i] = ((short*)nin->data)[i];          
+      }
+    }
+    else
+    {
+      for (int i=0; i<dim[1]*dim[2]*dim[3]; i++)
+      {
+          filemem0[i] = ((short*)nin->data)[i*2];
+          filemem1[i] = ((short*)nin->data)[i*2+1];
+      }
     }
 
     const cudaExtent volumeSize = make_cudaExtent(dim[1], dim[2], dim[3]);      
@@ -1598,7 +1609,7 @@ public:
     copyParams0.extent   = volumeSize;
     copyParams0.kind     = cudaMemcpyHostToDevice;
     cudaMemcpy3D(&copyParams0);
-
+    printf("end of Queue.push()\n");
     return d_volumeArray[curvol];
   }
   int* getDataDim()
@@ -2172,7 +2183,7 @@ main(int argc, const char **argv) {
   Hale::Polydata *hpldorig = new Hale::Polydata(lpldorig, true,
                          Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
                          "LineStrip");  
-  hpldorig->colorSolid(1.0,1.0,0.5);
+  hpldorig->colorSolid(1.0,1.0,1.0);
   scene.add(hpldorig);
 
   limnPolyData *lpld4 = limnPolyDataNew();
@@ -2184,7 +2195,7 @@ main(int argc, const char **argv) {
   Hale::Polydata *hpld3 = new Hale::Polydata(lpld3, true,
                          Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
                          "LineStrip");  
-  hpld3->colorSolid(1.0,1.0,0.5);
+  hpld3->colorSolid(1.0,0.0,0.0);
 
   Hale::Polydata *hpld4 = new Hale::Polydata(lpld4, true,
                          Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
@@ -3116,6 +3127,8 @@ main(int argc, const char **argv) {
   bool stateZoom = false;
   bool stateXKey = false;
   bool statePKey = false;
+  bool stateDKey = false;
+  bool stateFKey = false;
   double lastX, lastY;
   double verextent2 = verextent;
   bool isHoldOn = false;
@@ -3216,6 +3229,30 @@ main(int argc, const char **argv) {
           scene.add(vtexture[i]);
       }
     }
+    if (keyPressed == 'D')
+    {
+      stateDKey = !stateDKey;
+      if (stateDKey)
+      {
+        scene.remove(hpld_inter);
+      }
+      else
+      {
+        scene.add(hpld_inter);
+      }
+    }    
+    if (keyPressed == 'F')
+    {
+      stateFKey = !stateFKey;
+      if (stateFKey)
+      {
+        scene.remove(hpld_sq_inter);
+      }
+      else
+      {
+        scene.add(hpld_sq_inter);
+      }
+    }        
     if (keyPressed == 'N')
     {
       stateNKey = !stateNKey;
@@ -3770,6 +3807,36 @@ main(int argc, const char **argv) {
             fmat2[3][1] = center[1];
             fmat2[3][2] = center[2];
             hpld_inter->model(fmat2);
+
+            //update the local texture frame in first viewer
+            viewer.current();
+            glm::mat4 tmat_sq_inter = glm::mat4();
+            
+            tmat_sq_inter[0][0] = FN[0];
+            tmat_sq_inter[0][1] = FN[1];
+            tmat_sq_inter[0][2] = FN[2];
+            tmat_sq_inter[0][3] = 0;
+            tmat_sq_inter[1][0] = FB[0];
+            tmat_sq_inter[1][1] = FB[1];
+            tmat_sq_inter[1][2] = FB[2];
+            tmat_sq_inter[1][3] = 0;
+            tmat_sq_inter[2][0] = FT[0];
+            tmat_sq_inter[2][1] = FT[1];
+            tmat_sq_inter[2][2] = FT[2];
+            tmat_sq_inter[2][3] = 0;
+            tmat_sq_inter[3][0] = center[0];
+            tmat_sq_inter[3][1] = center[1];
+            tmat_sq_inter[3][2] = center[2];
+            tmat_sq_inter[3][3] = 1;
+            
+            glm::mat4 smat_sq_inter = glm::mat4();
+            smat_sq_inter[0][0] = 2;
+            smat_sq_inter[1][1] = 2;
+            glm::mat4 fmat_sq_inter = tmat_sq_inter*smat_sq_inter;
+
+            hpld_sq_inter->model(fmat_sq_inter);    
+            viewer.current();
+            hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);            
           }
         }
       }

@@ -1101,6 +1101,22 @@ void drawCircle(unsigned char *img, int s0, int s1, int s2, int drawchan, int c1
   }
 }
 
+void drawCircleWithColor(unsigned char *img, int s0, int s1, int s2, int c1, int c2, double rad, double angstep, unsigned char color0, unsigned char color1, unsigned char color2)
+{
+  for (double curang = 0; curang<2*M_PI; curang+=angstep)
+  {
+    int i1, i2;
+    i2 = sin(curang)*rad;
+    i1 = cos(curang)*rad;
+    i1 += c1;
+    i2 += c2;
+
+    img[i2*s1*s0 + i1*s0 + 0] = color0;
+    img[i2*s1*s0 + i1*s0 + 1] = color1;
+    img[i2*s1*s0 + i1*s0 + 2] = color2;
+  }
+}
+
 void drawCross(unsigned char *img, int s0, int s1, int s2, int drawchan, int c1, int c2, double rad)
 {
   for (int i=c1-rad; i<c1+rad; i++)
@@ -1632,7 +1648,7 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   double *eigenvec, double verextent2, double swidth, double sstep, int nOutChannel, float *d_volmem, 
   int *d_dim, int *d_size, double *d_dir1, double *d_dir2, double *d_center, double *imageDouble, double *d_imageDouble,
   unsigned char *imageQuantized, Hale::Viewer &viewer, Hale::Viewer &viewer2, Hale::Polydata *hpldview2, 
-  Hale::Polydata *hpld_inter, double spherescale, Hale::Polydata *hpld_sq_inter)
+  Hale::Polydata *hpld_inter, double spherescale, Hale::Polydata *hpld_sq_inter, bool statePKey)
 {
   int count;
   double dir1[3],dir2[3],center[3];
@@ -1735,7 +1751,10 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   dim3 threadsPerBlock2(numThread1D,numThread1D);
   dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
-  kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+  if (statePKey)
+    kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+  else
+    kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
   errCu = cudaGetLastError();
   if (errCu != cudaSuccess) 
@@ -1752,6 +1771,7 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   
   quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
   setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+  drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
 
   viewer2.current();
   hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
@@ -2962,6 +2982,8 @@ main(int argc, const char **argv) {
     quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
     setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
 
+    drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
+
     hpldview2->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
     //add the MIP in the interpolated position
     viewer.current();
@@ -3178,7 +3200,7 @@ main(int argc, const char **argv) {
                             eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, 
                             d_dim, d_size, d_dir1, d_dir2, d_center, imageDouble, d_imageDouble,
                             imageQuantized, viewer, viewer2, hpldview2, 
-                            hpld_inter, spherescale_inter, hpld_sq_inter);        
+                            hpld_inter, spherescale_inter, hpld_sq_inter, statePKey);        
       }      
     }
     else
@@ -3192,7 +3214,7 @@ main(int argc, const char **argv) {
                               eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, 
                               d_dim, d_size, d_dir1, d_dir2, d_center, imageDouble, d_imageDouble,
                               imageQuantized, viewer, viewer2, hpldview2, 
-                              hpld_inter, spherescale_inter, hpld_sq_inter);        
+                              hpld_inter, spherescale_inter, hpld_sq_inter, statePKey);        
         }      
       }
 
@@ -3314,9 +3336,13 @@ main(int argc, const char **argv) {
             
             quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
             setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+            drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
 
             viewer2.current();
             hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+
+            viewer.current();
+            hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);                        
         }
         else
         {
@@ -3335,9 +3361,13 @@ main(int argc, const char **argv) {
             
             quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
             setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+            drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
 
             viewer2.current();
             hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+
+            viewer.current();
+            hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);                        
         }
       }
     }
@@ -3388,7 +3418,10 @@ main(int argc, const char **argv) {
 
           verextent2 = verextent2*(1+pcent);
 
-          kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+          if (statePKey)
+            kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+          else
+            kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
           errCu = cudaGetLastError();
           if (errCu != cudaSuccess) 
@@ -3402,6 +3435,7 @@ main(int argc, const char **argv) {
           
           quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
           setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+          drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
 
           viewer2.current();
           hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
@@ -3777,7 +3811,10 @@ main(int argc, const char **argv) {
             dim3 threadsPerBlock2(numThread1D,numThread1D);
             dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
-            kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            if (statePKey)
+              kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            else
+              kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
             errCu = cudaGetLastError();
             if (errCu != cudaSuccess) 
@@ -3794,6 +3831,8 @@ main(int argc, const char **argv) {
             
             quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
             setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+
+            drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
 
             viewer2.current();
             hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);

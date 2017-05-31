@@ -812,6 +812,7 @@ void kernel_peak(int* dim, int *size, double verextent, double *center, double *
                 eigenOfHess(hessian,eigenval);
                 //printf("Inside kernel_peak, before checking if eigenval < 0\n");
                 if (eigenval[0]<0 && eigenval[1]<0 && eigenval[2]<0)
+                //if (1)
                 {                
                   //printf("there is something with eigenval < 0\n");
                   normalize(peakdis,3);
@@ -1718,19 +1719,19 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   //after that call the normal kernel to do MIP
   count = mini;
   for (int i=0; i<3; i++)
-    //center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-    center[i] = ctmr(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+    center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+    //center[i] = ctmr(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
   
   double FT[3];
   double FN[3],FB[3];
   double dr[3],ddr[3];
   for (int i=0; i<3; i++)
-    //dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-    dr[i] = ctmr_g(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+    dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+    //dr[i] = ctmr_g(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
   for (int i=0; i<3; i++)
-    //ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-    ddr[i] = ctmr_gg(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+    ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+    //ddr[i] = ctmr_gg(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
   normalize(dr,3);
   normalize(ddr,3);
@@ -2175,8 +2176,8 @@ main(int argc, const char **argv) {
     {
       double curpoint[3];
       for (int k=0; k<3; k++)
-        //curpoint[k] = cubicFilter<double>((double)j*tsep, arr_center[(i-1)*3+k], arr_center[(i)*3+k], arr_center[(i+1)*3+k], arr_center[(i+2)*3+k]);
-        curpoint[k] = ctmr((double)j*tsep, arr_center[(i-1)*3+k], arr_center[(i)*3+k], arr_center[(i+1)*3+k], arr_center[(i+2)*3+k]);
+        curpoint[k] = cubicFilter<double>((double)j*tsep, arr_center[(i-1)*3+k], arr_center[(i)*3+k], arr_center[(i+1)*3+k], arr_center[(i+2)*3+k]);
+        //curpoint[k] = ctmr((double)j*tsep, arr_center[(i-1)*3+k], arr_center[(i)*3+k], arr_center[(i+1)*3+k], arr_center[(i+2)*3+k]);
       ELL_4V_SET(lpld3->xyzw + 4*cpointind, curpoint[0],curpoint[1],curpoint[2], 1.0);  
       lpld3->indx[cpointind] = cpointind;
 
@@ -2271,8 +2272,8 @@ main(int argc, const char **argv) {
     curnameind = arr_nameid[count];
     for (int i=0; i<3; i++)
     {
-      //center[i] = cubicFilter<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-      center[i] = ctmr(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      center[i] = cubicFilter<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      //center[i] = ctmr(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
       printf("ctmr computation: x=%f, a0=%f, a1=%f, a2=%f, a3=%f -> res=%f\n", 0.0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i],center[i]);
     }
     printf("center = %f %f %f\n", center[0],center[1],center[2]);
@@ -2281,11 +2282,11 @@ main(int argc, const char **argv) {
     double FN[3],FB[3];
     double dr[3],ddr[3];
     for (int i=0; i<3; i++)
-      //dr[i] = cubicFilter_G<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-      dr[i] = ctmr_g(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      dr[i] = cubicFilter_G<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      //dr[i] = ctmr_g(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
     for (int i=0; i<3; i++)
-      //ddr[i] = cubicFilter_GG<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-      ddr[i] = ctmr_gg(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      ddr[i] = cubicFilter_GG<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      //ddr[i] = ctmr_gg(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
     printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
     printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
@@ -2898,8 +2899,8 @@ main(int argc, const char **argv) {
 
     count = 1;
     for (int i=0; i<3; i++)
-      //center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-      center[i] = ctmr(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      //center[i] = ctmr(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
     printf("center = %f %f %f\n", center[0],center[1],center[2]);
     
@@ -2907,12 +2908,12 @@ main(int argc, const char **argv) {
     double FN[3],FB[3];
     double dr[3],ddr[3];
     for (int i=0; i<3; i++)
-      //dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-      dr[i] = ctmr_g(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      //dr[i] = ctmr_g(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
     for (int i=0; i<3; i++)
-      //ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-      ddr[i] = ctmr_gg(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      //ddr[i] = ctmr_gg(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
     printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
     printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
@@ -3769,8 +3770,8 @@ main(int argc, const char **argv) {
             //after that call the normal kernel to do MIP
             count = mini;
             for (int i=0; i<3; i++)
-              //center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-              center[i] = ctmr(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+              center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+              //center[i] = ctmr(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
             printf("center = %f %f %f\n", center[0],center[1],center[2]);
             
@@ -3778,12 +3779,12 @@ main(int argc, const char **argv) {
             double FN[3],FB[3];
             double dr[3],ddr[3];
             for (int i=0; i<3; i++)
-              //dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-              dr[i] = ctmr_g(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+              dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+              //dr[i] = ctmr_g(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
             for (int i=0; i<3; i++)
-              //ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-              ddr[i] = ctmr_gg(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+              ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+              //ddr[i] = ctmr_gg(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
             printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
             printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);

@@ -23,15 +23,20 @@ using namespace std;
 texture<float, 3, cudaReadModeElementType> tex0;  // 3D texture
 texture<float, 3, cudaReadModeElementType> tex1;  // 3D texture
 texture<float, 3, cudaReadModeElementType> tex2;  // 3D texture
+texture<float, 3, cudaReadModeElementType> tex3;  // 3D texture
+texture<float, 3, cudaReadModeElementType> tex4;  // 3D texture
+texture<float, 3, cudaReadModeElementType> tex5;  // 3D texture
+
 /*
 cudaArray *d_volumeArray0 = 0;
 cudaArray *d_volumeArray1 = 0;
 cudaArray *d_volumeArray2 = 0;
 */
-#define NTEX 6
+#define NTEX 3
 //texture<float, 3, cudaReadModeElementType> tex[NTEX];
 //+1 for an extra volume for interpolation
 cudaArray *d_volumeArray[NTEX+1];
+cudaArray *d_volumeArray1[NTEX+1];
 
 //ctmr filter
 double ctmr_kern(double x)
@@ -740,6 +745,21 @@ void kernel_interpol(float *intervol, int* dim, float alpha)
       printf("inside kernel_interpol, tex0 at (%d,%d,%d) = %f\n",i,j,k, tex3D(tex0,i,j,k));
     }
 }
+
+__global__
+void kernel_interpol2(float *intervol, float *intervol2, int* dim, float alpha)
+{
+    int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int j = (blockIdx.y * blockDim.y) + threadIdx.y;
+    int k = (blockIdx.z * blockDim.z) + threadIdx.z;
+
+    if ((i>=dim[1]) || (j>=dim[2]) || (k>=dim[3]))
+        return;
+
+    intervol[k*dim[2]*dim[1] + j*dim[1] + i] = lerp(tex3D(tex0,i,j,k),tex3D(tex1,i,j,k),alpha);
+    intervol2[k*dim[2]*dim[1] + j*dim[1] + i] = lerp(tex3D(tex3,i,j,k),tex3D(tex4,i,j,k),alpha);
+}
+
 
 //finding peak
 __global__
@@ -1497,6 +1517,8 @@ public:
   {
 
   }
+
+  /*
   cudaArray* find(int time)
   {
     if (timetoindex.find(time) == timetoindex.end())
@@ -1504,6 +1526,14 @@ public:
     else
       return d_volumeArray[timetoindex[time]];
   }
+  */
+  int find(int time)
+  {
+    if (timetoindex.find(time) == timetoindex.end())
+      return -1;
+    else
+      return timetoindex[time];
+  }  
 
   int findFarthestTime(int time)
   {
@@ -1518,14 +1548,16 @@ public:
     return maxind;
   }
 
-  cudaArray* push(int time, int *arr_nameid, char* pathprefix, airArray *mop)
+  //cudaArray* push(int time, int *arr_nameid, char* pathprefix, airArray *mop)
+  int push(int time, int *arr_nameid, char* pathprefix, airArray *mop)
   {
     printf("Inside Queue.push(): time = %d\n",time);
     for (int i=0; i<elems.size(); i++)
       printf("%d ", elems[i]);
     printf("\n");
-    cudaArray* findres = find(time);
-    if (findres)
+    //cudaArray* findres = find(time);
+    int findres = find(time);
+    if (findres>=0)
     {
       printf("findres = %d\n", findres);
       return findres;
@@ -1618,6 +1650,7 @@ public:
     if (!d_volumeArray[curvol])
     {
       cudaMalloc3DArray(&d_volumeArray[curvol], &channelDesc, volumeSize);
+      cudaMalloc3DArray(&d_volumeArray1[curvol], &channelDesc, volumeSize);
     }
 
     cudaMemcpy3DParms copyParams0 = {0};
@@ -1626,8 +1659,17 @@ public:
     copyParams0.extent   = volumeSize;
     copyParams0.kind     = cudaMemcpyHostToDevice;
     cudaMemcpy3D(&copyParams0);
+
+    cudaMemcpy3DParms copyParams1 = {0};
+    copyParams1.srcPtr   = make_cudaPitchedPtr((void*)filemem1, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
+    copyParams1.dstArray = d_volumeArray1[curvol];
+    copyParams1.extent   = volumeSize;
+    copyParams1.kind     = cudaMemcpyHostToDevice;
+    cudaMemcpy3D(&copyParams1);
+
     printf("end of Queue.push()\n");
-    return d_volumeArray[curvol];
+    //return d_volumeArray[curvol];
+    return curvol;
   }
   int* getDataDim()
   {
@@ -1646,7 +1688,7 @@ private:
 
 void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue, int *arr_nameid, 
   double *arr_center, char *pathprefix, airArray *mop, unsigned int pixSize, int *dim, int *size, 
-  double *eigenvec, double verextent2, double swidth, double sstep, int nOutChannel, float *d_volmem, 
+  double *eigenvec, double verextent2, double swidth, double sstep, int nOutChannel, float *d_volmem, float *d_volmem2, 
   int *d_dim, int *d_size, double *d_dir1, double *d_dir2, double *d_center, double *imageDouble, double *d_imageDouble,
   unsigned char *imageQuantized, Hale::Viewer &viewer, Hale::Viewer &viewer2, Hale::Polydata *hpldview2, 
   Hale::Polydata *hpld_inter, double spherescale, Hale::Polydata *hpld_sq_inter, bool statePKey)
@@ -1662,7 +1704,8 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
     curVolInMem = mini;
     count = mini;
     cudaError_t errCu;
-    cudaArray* d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+    //cudaArray* d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+    cudaArray* d_curvolarr = d_volumeArray[queue.push(count,arr_nameid,pathprefix,mop)];
 
     tex0.normalized = false;                    
     tex0.filterMode = cudaFilterModeLinear;     
@@ -1671,14 +1714,31 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
     tex0.addressMode[2] = cudaAddressModeBorder;
     cudaBindTextureToArray(tex0, d_curvolarr, channelDesc);    
 
+    d_curvolarr = d_volumeArray1[queue.push(count,arr_nameid,pathprefix,mop)];
+    tex3.normalized = false;                    
+    tex3.filterMode = cudaFilterModeLinear;     
+    tex3.addressMode[0] = cudaAddressModeBorder;
+    tex3.addressMode[1] = cudaAddressModeBorder;
+    tex3.addressMode[2] = cudaAddressModeBorder;
+    cudaBindTextureToArray(tex3, d_curvolarr, channelDesc);        
+
     count = mini+1;
-    d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+    //d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+    d_curvolarr = d_volumeArray[queue.push(count,arr_nameid,pathprefix,mop)];
     tex1.normalized = false;                    
     tex1.filterMode = cudaFilterModeLinear;     
     tex1.addressMode[0] = cudaAddressModeBorder;
     tex1.addressMode[1] = cudaAddressModeBorder;
     tex1.addressMode[2] = cudaAddressModeBorder;
     cudaBindTextureToArray(tex1, d_curvolarr, channelDesc); 
+
+    d_curvolarr = d_volumeArray1[queue.push(count,arr_nameid,pathprefix,mop)];
+    tex4.normalized = false;                    
+    tex4.filterMode = cudaFilterModeLinear;     
+    tex4.addressMode[0] = cudaAddressModeBorder;
+    tex4.addressMode[1] = cudaAddressModeBorder;
+    tex4.addressMode[2] = cudaAddressModeBorder;
+    cudaBindTextureToArray(tex4, d_curvolarr, channelDesc);     
   }   
 
   int numThread1D;
@@ -1687,7 +1747,8 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   dim3 threadsPerBlock(numThread1D,numThread1D,numThread1D);
   dim3 numBlocks((dim[1]+numThread1D-1)/numThread1D,(dim[2]+numThread1D-1)/numThread1D,(dim[3]+numThread1D-1)/numThread1D);
 
-  kernel_interpol<<<numBlocks,threadsPerBlock>>>(d_volmem,d_dim,alpha);
+  //kernel_interpol<<<numBlocks,threadsPerBlock>>>(d_volmem,d_dim,alpha);
+  kernel_interpol2<<<numBlocks,threadsPerBlock>>>(d_volmem,d_volmem2,d_dim,alpha);
 
   cudaError_t errCu = cudaGetLastError();
   if (errCu != cudaSuccess) 
@@ -1701,6 +1762,7 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   if (!d_volumeArray[NTEX])
   {
     cudaMalloc3DArray(&d_volumeArray[NTEX], &channelDesc, volumeSize);
+    cudaMalloc3DArray(&d_volumeArray1[NTEX], &channelDesc, volumeSize);
   }
   cudaMemcpy3DParms copyParams0 = {0};
   copyParams0.srcPtr   = make_cudaPitchedPtr((void*)d_volmem, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
@@ -1716,6 +1778,21 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   tex2.addressMode[2] = cudaAddressModeBorder;
   cudaBindTextureToArray(tex2, d_volumeArray[NTEX], channelDesc);       
   
+
+  cudaMemcpy3DParms copyParams1 = {0};
+  copyParams1.srcPtr   = make_cudaPitchedPtr((void*)d_volmem2, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
+  copyParams1.dstArray = d_volumeArray1[NTEX];
+  copyParams1.extent   = volumeSize;
+  copyParams1.kind     = cudaMemcpyDeviceToDevice;
+  cudaMemcpy3D(&copyParams1);
+
+  tex5.normalized = false;                    
+  tex5.filterMode = cudaFilterModeLinear;     
+  tex5.addressMode[0] = cudaAddressModeBorder;
+  tex5.addressMode[1] = cudaAddressModeBorder;
+  tex5.addressMode[2] = cudaAddressModeBorder;
+  cudaBindTextureToArray(tex5, d_volumeArray1[NTEX], channelDesc);       
+
   //after that call the normal kernel to do MIP
   count = mini;
   for (int i=0; i<3; i++)
@@ -2526,13 +2603,22 @@ main(int argc, const char **argv) {
     cudaError_t errCu;
     cudaChannelFormatDesc channelDesc;
     channelDesc = cudaCreateChannelDesc<float>();
-    cudaArray* d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+    //cudaArray* d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+    cudaArray* d_curvolarr = d_volumeArray[queue.push(count,arr_nameid,pathprefix,mop)];
     tex2.normalized = false;                      // access with normalized texture coordinates
     tex2.filterMode = cudaFilterModeLinear;      // linear interpolation
     tex2.addressMode[0] = cudaAddressModeBorder;   // wrap texture coordinates
     tex2.addressMode[1] = cudaAddressModeBorder;
     tex2.addressMode[2] = cudaAddressModeBorder;
     cudaBindTextureToArray(tex2, d_curvolarr, channelDesc);
+
+    d_curvolarr = d_volumeArray1[queue.push(count,arr_nameid,pathprefix,mop)];
+    tex5.normalized = false;                      // access with normalized texture coordinates
+    tex5.filterMode = cudaFilterModeLinear;      // linear interpolation
+    tex5.addressMode[0] = cudaAddressModeBorder;   // wrap texture coordinates
+    tex5.addressMode[1] = cudaAddressModeBorder;
+    tex5.addressMode[2] = cudaAddressModeBorder;
+    cudaBindTextureToArray(tex5, d_curvolarr, channelDesc);    
 
     errCu = cudaMemGetInfo( &free_byte, &total_byte ) ;
 
@@ -2787,7 +2873,8 @@ main(int argc, const char **argv) {
     */
     cudaChannelFormatDesc channelDesc;
     channelDesc = cudaCreateChannelDesc<float>();    
-    cudaArray* d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+    //cudaArray* d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+    cudaArray* d_curvolarr = d_volumeArray[queue.push(count,arr_nameid,pathprefix,mop)];
 
     tex0.normalized = false;                    
     tex0.filterMode = cudaFilterModeLinear;     
@@ -2795,6 +2882,15 @@ main(int argc, const char **argv) {
     tex0.addressMode[1] = cudaAddressModeBorder;
     tex0.addressMode[2] = cudaAddressModeBorder;
     cudaBindTextureToArray(tex0, d_curvolarr, channelDesc);    
+
+    d_curvolarr = d_volumeArray1[queue.push(count,arr_nameid,pathprefix,mop)];
+
+    tex3.normalized = false;                    
+    tex3.filterMode = cudaFilterModeLinear;     
+    tex3.addressMode[0] = cudaAddressModeBorder;
+    tex3.addressMode[1] = cudaAddressModeBorder;
+    tex3.addressMode[2] = cudaAddressModeBorder;
+    cudaBindTextureToArray(tex3, d_curvolarr, channelDesc);        
 
     //read second file
     count = 2;
@@ -2832,29 +2928,41 @@ main(int argc, const char **argv) {
     copyParams1.kind     = cudaMemcpyHostToDevice;
     cudaMemcpy3D(&copyParams1);
 */
-    d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+    //d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+    d_curvolarr = d_volumeArray[queue.push(count,arr_nameid,pathprefix,mop)];
     tex1.normalized = false;                    
     tex1.filterMode = cudaFilterModeLinear;     
     tex1.addressMode[0] = cudaAddressModeBorder;
     tex1.addressMode[1] = cudaAddressModeBorder;
     tex1.addressMode[2] = cudaAddressModeBorder;
     cudaBindTextureToArray(tex1, d_curvolarr, channelDesc);    
+
+    d_curvolarr = d_volumeArray1[queue.push(count,arr_nameid,pathprefix,mop)];
+    tex4.normalized = false;                    
+    tex4.filterMode = cudaFilterModeLinear;     
+    tex4.addressMode[0] = cudaAddressModeBorder;
+    tex4.addressMode[1] = cudaAddressModeBorder;
+    tex4.addressMode[2] = cudaAddressModeBorder;
+    cudaBindTextureToArray(tex4, d_curvolarr, channelDesc);    
+
     int curinterp = (timetop[1]+timetop[2])/2;
     double alpha = ptofrac[curinterp];
     cudaError_t errCu;
 
-    float *d_volmem;
+    float *d_volmem, *d_volmem2;
     int *dim = queue.getDataDim();
     const cudaExtent volumeSize = make_cudaExtent(dim[1], dim[2], dim[3]);
     int pixSize = sizeof(float);
     cudaMalloc(&d_volmem,sizeof(float)*dim[1]*dim[2]*dim[3]);
+    cudaMalloc(&d_volmem2,sizeof(float)*dim[1]*dim[2]*dim[3]);
 
     int numThread1D = 8;
     dim3 threadsPerBlock(numThread1D,numThread1D,numThread1D);
     dim3 numBlocks((dim[1]+numThread1D-1)/numThread1D,(dim[2]+numThread1D-1)/numThread1D,(dim[3]+numThread1D-1)/numThread1D);
 
     
-    kernel_interpol<<<numBlocks,threadsPerBlock>>>(d_volmem,d_dim,alpha);
+    //kernel_interpol<<<numBlocks,threadsPerBlock>>>(d_volmem,d_dim,alpha);
+    kernel_interpol2<<<numBlocks,threadsPerBlock>>>(d_volmem,d_volmem2,d_dim,alpha);
 
     errCu = cudaGetLastError();
     if (errCu != cudaSuccess) 
@@ -2867,6 +2975,7 @@ main(int argc, const char **argv) {
     if (!d_volumeArray[NTEX])
     {
       cudaMalloc3DArray(&d_volumeArray[NTEX], &channelDesc, volumeSize);
+      cudaMalloc3DArray(&d_volumeArray1[NTEX], &channelDesc, volumeSize);
       printf("d_volumeArray[NTEX] allocated\n");
     }
 
@@ -2881,6 +2990,13 @@ main(int argc, const char **argv) {
     copyParams0.kind     = cudaMemcpyDeviceToDevice;
     cudaMemcpy3D(&copyParams0);
 
+    cudaMemcpy3DParms copyParams1 = {0};
+    copyParams1.srcPtr   = make_cudaPitchedPtr((void*)d_volmem2, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
+    copyParams1.dstArray = d_volumeArray1[NTEX];
+    copyParams1.extent   = volumeSize;
+    copyParams1.kind     = cudaMemcpyDeviceToDevice;
+    cudaMemcpy3D(&copyParams1);    
+
     errCu = cudaGetLastError();
     if (errCu != cudaSuccess) 
         printf("Error after copying mem from d_volmem to d_volumeArray[NTEX]: %s\n", cudaGetErrorString(errCu));
@@ -2891,7 +3007,14 @@ main(int argc, const char **argv) {
     tex2.addressMode[0] = cudaAddressModeBorder;
     tex2.addressMode[1] = cudaAddressModeBorder;
     tex2.addressMode[2] = cudaAddressModeBorder;
-    cudaBindTextureToArray(tex2, d_volumeArray[NTEX], channelDesc);       
+    cudaBindTextureToArray(tex2, d_volumeArray[NTEX], channelDesc);      
+
+    tex5.normalized = false;                    
+    tex5.filterMode = cudaFilterModeLinear;     
+    tex5.addressMode[0] = cudaAddressModeBorder;
+    tex5.addressMode[1] = cudaAddressModeBorder;
+    tex5.addressMode[2] = cudaAddressModeBorder;
+    cudaBindTextureToArray(tex5, d_volumeArray1[NTEX], channelDesc);        
   
     errCu = cudaGetLastError();
     if (errCu != cudaSuccess) 
@@ -3198,7 +3321,7 @@ main(int argc, const char **argv) {
         curinterp--;
         interpolVolAndRender(curVolInMem, ptotime[curinterp], ptofrac[curinterp], queue, arr_nameid, 
                             arr_center, pathprefix, mop, pixSize, dim, size, 
-                            eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, 
+                            eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, d_volmem2,
                             d_dim, d_size, d_dir1, d_dir2, d_center, imageDouble, d_imageDouble,
                             imageQuantized, viewer, viewer2, hpldview2, 
                             hpld_inter, spherescale_inter, hpld_sq_inter, statePKey);        
@@ -3212,7 +3335,7 @@ main(int argc, const char **argv) {
           curinterp++;
           interpolVolAndRender(curVolInMem, ptotime[curinterp], ptofrac[curinterp], queue, arr_nameid, 
                               arr_center, pathprefix, mop, pixSize, dim, size, 
-                              eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, 
+                              eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, d_volmem2,
                               d_dim, d_size, d_dir1, d_dir2, d_center, imageDouble, d_imageDouble,
                               imageQuantized, viewer, viewer2, hpldview2, 
                               hpld_inter, spherescale_inter, hpld_sq_inter, statePKey);        
@@ -3681,7 +3804,8 @@ main(int argc, const char **argv) {
               cudaError_t errCu;
               cudaChannelFormatDesc channelDesc;
               channelDesc = cudaCreateChannelDesc<float>();
-              cudaArray* d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+              //cudaArray* d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+              cudaArray* d_curvolarr = d_volumeArray[queue.push(count,arr_nameid,pathprefix,mop)];
 
               tex0.normalized = false;                    
               tex0.filterMode = cudaFilterModeLinear;     
@@ -3689,6 +3813,16 @@ main(int argc, const char **argv) {
               tex0.addressMode[1] = cudaAddressModeBorder;
               tex0.addressMode[2] = cudaAddressModeBorder;
               cudaBindTextureToArray(tex0, d_curvolarr, channelDesc);    
+
+              d_curvolarr = d_volumeArray1[queue.push(count,arr_nameid,pathprefix,mop)];
+
+              tex3.normalized = false;                    
+              tex3.filterMode = cudaFilterModeLinear;     
+              tex3.addressMode[0] = cudaAddressModeBorder;
+              tex3.addressMode[1] = cudaAddressModeBorder;
+              tex3.addressMode[2] = cudaAddressModeBorder;
+              cudaBindTextureToArray(tex3, d_curvolarr, channelDesc);    
+
 
               //read second file
               count = mini+1;
@@ -3726,13 +3860,22 @@ main(int argc, const char **argv) {
               copyParams1.kind     = cudaMemcpyHostToDevice;
               cudaMemcpy3D(&copyParams1);
               */
-              d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+              //d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+              d_curvolarr = d_volumeArray[queue.push(count,arr_nameid,pathprefix,mop)];
               tex1.normalized = false;                    
               tex1.filterMode = cudaFilterModeLinear;     
               tex1.addressMode[0] = cudaAddressModeBorder;
               tex1.addressMode[1] = cudaAddressModeBorder;
               tex1.addressMode[2] = cudaAddressModeBorder;
               cudaBindTextureToArray(tex1, d_curvolarr, channelDesc); 
+
+              d_curvolarr = d_volumeArray1[queue.push(count,arr_nameid,pathprefix,mop)];
+              tex4.normalized = false;                    
+              tex4.filterMode = cudaFilterModeLinear;     
+              tex4.addressMode[0] = cudaAddressModeBorder;
+              tex4.addressMode[1] = cudaAddressModeBorder;
+              tex4.addressMode[2] = cudaAddressModeBorder;
+              cudaBindTextureToArray(tex4, d_curvolarr, channelDesc);               
             }   
 
             int numThread1D;
@@ -3743,7 +3886,8 @@ main(int argc, const char **argv) {
             dim3 numBlocks((dim[1]+numThread1D-1)/numThread1D,(dim[2]+numThread1D-1)/numThread1D,(dim[3]+numThread1D-1)/numThread1D);
 
             double alpha = mint;
-            kernel_interpol<<<numBlocks,threadsPerBlock>>>(d_volmem,d_dim,alpha);
+            //kernel_interpol<<<numBlocks,threadsPerBlock>>>(d_volmem,d_dim,alpha);
+            kernel_interpol2<<<numBlocks,threadsPerBlock>>>(d_volmem,d_volmem2,d_dim,alpha);
 
             cudaError_t errCu = cudaGetLastError();
             if (errCu != cudaSuccess) 
@@ -3767,6 +3911,19 @@ main(int argc, const char **argv) {
             tex2.addressMode[2] = cudaAddressModeBorder;
             cudaBindTextureToArray(tex2, d_volumeArray[NTEX], channelDesc);       
             
+            copyParams1.srcPtr   = make_cudaPitchedPtr((void*)d_volmem2, volumeSize.width*pixSize, volumeSize.width, volumeSize.height);
+            copyParams1.dstArray = d_volumeArray1[NTEX];
+            copyParams1.extent   = volumeSize;
+            copyParams1.kind     = cudaMemcpyDeviceToDevice;
+            cudaMemcpy3D(&copyParams1);
+
+            tex5.normalized = false;                    
+            tex5.filterMode = cudaFilterModeLinear;     
+            tex5.addressMode[0] = cudaAddressModeBorder;
+            tex5.addressMode[1] = cudaAddressModeBorder;
+            tex5.addressMode[2] = cudaAddressModeBorder;
+            cudaBindTextureToArray(tex5, d_volumeArray1[NTEX], channelDesc);       
+
             //after that call the normal kernel to do MIP
             count = mini;
             for (int i=0; i<3; i++)

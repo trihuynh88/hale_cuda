@@ -40,6 +40,7 @@ cudaArray *d_volumeArray1[NTEX+1];
 
 //range for quantizing
 double range[] = {0,1,0,1600,0,3300,0,1};
+double range_p[] = {0,1,0,1,0,1,0,1};
 
 #define CLIP(x,a,b) ((x)<(a)?(a):((x)>(b)?(b):(x)))
 
@@ -1969,8 +1970,11 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   short width = size[0];
   short height = size[1];
   
-  //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
-  quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
+  //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);  
+  if (statePKey)
+    quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range_p);        
+  else
+    quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
   setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
   drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
 
@@ -3652,8 +3656,19 @@ main(int argc, const char **argv) {
 
             cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
             
+            //debug
+            sprintf(outnameslice,"test_peak.nrrd");
+            if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
+              || nrrdSave(outnameslice, ndblpng, NULL)
+                  ) {
+              char *err = biffGetDone(NRRD);
+              printf("%s: couldn't save output:\n%s", argv[0], err);
+              free(err); nrrdNix(ndblpng);
+              exit(1);
+              }
+
             //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
-            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
+            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range_p);    
             setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
             drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
 
@@ -3756,7 +3771,10 @@ main(int argc, const char **argv) {
           cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
           
           //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
-          quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
+          if (statePKey)
+            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range_p);    
+          else
+            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
           setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
           drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
 
@@ -4210,7 +4228,10 @@ main(int argc, const char **argv) {
             short height = size[1];
             
             //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
-            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
+            if (statePKey)
+              quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range_p);    
+            else
+              quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
             setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
 
             drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);

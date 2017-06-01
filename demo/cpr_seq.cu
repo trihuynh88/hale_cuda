@@ -1804,7 +1804,7 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   double *eigenvec, double verextent2, double swidth, double sstep, int nOutChannel, float *d_volmem, float *d_volmem2, 
   int *d_dim, int *d_size, double *d_dir1, double *d_dir2, double *d_center, double *imageDouble, double *d_imageDouble,
   unsigned char *imageQuantized, Hale::Viewer &viewer, Hale::Viewer &viewer2, Hale::Polydata *hpldview2, 
-  Hale::Polydata *hpld_inter, double spherescale, Hale::Polydata *hpld_sq_inter, bool statePKey, int kern)
+  Hale::Polydata *hpld_inter, double spherescale, Hale::Polydata *hpld_sq_inter, bool statePKey, int kern, bool stateIKey)
 {
   int count;
   double dir1[3],dir2[3],center[3];
@@ -1954,8 +1954,12 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   if (statePKey)
     kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
   else
-    //kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
-    kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+  {
+    if (stateIKey)
+      kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+    else
+      kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);      
+  }
 
   errCu = cudaGetLastError();
   if (errCu != cudaSuccess) 
@@ -3473,6 +3477,7 @@ main(int argc, const char **argv) {
   bool statePKey = false;
   bool stateDKey = false;
   bool stateFKey = false;
+  bool stateIKey = false;
   double lastX, lastY;
   double verextent2 = verextent;
   bool isHoldOn = false;
@@ -3506,8 +3511,9 @@ main(int argc, const char **argv) {
   */
   int tmpcount = 0;
   //clock_t begin = clock();
-  time_t start,end;
+  time_t start,end,starti,endi;
   time (&start);
+  time (&starti);
   while(!Hale::finishing){
     glfwWaitEvents();
     int keyPressed = viewer.getKeyPressed();
@@ -3522,7 +3528,7 @@ main(int argc, const char **argv) {
                             eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, d_volmem2,
                             d_dim, d_size, d_dir1, d_dir2, d_center, imageDouble, d_imageDouble,
                             imageQuantized, viewer, viewer2, hpldview2, 
-                            hpld_inter, spherescale_inter, hpld_sq_inter, statePKey, kern);        
+                            hpld_inter, spherescale_inter, hpld_sq_inter, statePKey, kern, stateIKey);        
       }      
     }
     else
@@ -3536,7 +3542,7 @@ main(int argc, const char **argv) {
                               eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, d_volmem2,
                               d_dim, d_size, d_dir1, d_dir2, d_center, imageDouble, d_imageDouble,
                               imageQuantized, viewer, viewer2, hpldview2, 
-                              hpld_inter, spherescale_inter, hpld_sq_inter, statePKey, kern);        
+                              hpld_inter, spherescale_inter, hpld_sq_inter, statePKey, kern, stateIKey);        
         }      
       }
 
@@ -3627,6 +3633,46 @@ main(int argc, const char **argv) {
           scene.add(vsphere[i]);
       }
     }
+
+    if (keyPressed2 == 'I')
+    {
+      time (&endi);
+      double dif = difftime (endi,starti);
+      if (dif>0.3)      
+      {
+        time (&starti);
+        stateIKey = !stateIKey;
+        if (!statePKey)
+        {
+              if (stateIKey)
+                kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+              else
+                kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+
+              errCu = cudaGetLastError();
+              if (errCu != cudaSuccess) 
+                  printf("Error: %s\n", cudaGetErrorString(errCu));
+
+              errCu = cudaDeviceSynchronize();
+              if (errCu != cudaSuccess) 
+                  printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+              cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+              
+              //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+              quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
+              setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+              drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
+
+              viewer2.current();
+              hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+
+              viewer.current();
+              hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);             
+        }
+      }
+    }
+
     //switching between maxima and MIP in window2
     if (keyPressed2 == 'P')
     {
@@ -3681,8 +3727,10 @@ main(int argc, const char **argv) {
         else
         {
             printf("statePKey = false, doing kernel_cpr, tmpcount = %d\n",tmpcount);
-            //kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
-            kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            if (stateIKey)
+              kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            else
+              kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
             errCu = cudaGetLastError();
             if (errCu != cudaSuccess) 
@@ -3757,8 +3805,12 @@ main(int argc, const char **argv) {
           if (statePKey)
             kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
           else
-            //kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
-            kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+          {
+            if (stateIKey)
+              kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            else
+              kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+          }
 
           errCu = cudaGetLastError();
           if (errCu != cudaSuccess) 

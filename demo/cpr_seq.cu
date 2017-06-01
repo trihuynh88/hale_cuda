@@ -38,6 +38,11 @@ cudaArray *d_volumeArray2 = 0;
 cudaArray *d_volumeArray[NTEX+1];
 cudaArray *d_volumeArray1[NTEX+1];
 
+//range for quantizing
+double range[] = {0,1,0,1600,0,3300,0,1};
+
+#define CLIP(x,a,b) ((x)<(a)?(a):((x)>(b)?(b):(x)))
+
 //ctmr filter
 double ctmr_kern(double x)
 {
@@ -1333,7 +1338,7 @@ void sliceImageDouble(double *input, int s1, int s2, int s3, double *output, int
 
 unsigned char quantizeDouble(double val, double minVal, double maxVal)
 {
-    return (val-minVal)*255.0/(maxVal-minVal);
+    return CLIP((val-minVal)*255.0/(maxVal-minVal),0,255);
 }
 
 //3D data, fastest to slowest
@@ -1360,6 +1365,16 @@ void quantizeImageDouble3D(double *input, unsigned char *output, int s0, int s1,
             for (int k=0; k<s0; k++)
             {
                 output[i*s1*s0+j*s0+k] = quantizeDouble(input[i*s1*s0+j*s0+k],minVal[k],maxVal[k]);
+            }
+}
+
+void quantizeImageDouble3D_Range(double *input, unsigned char *output, int s0, int s1, int s2, double *range)
+{
+    for (int i=0; i<s2; i++)
+        for (int j=0; j<s1; j++)
+            for (int k=0; k<s0; k++)
+            {
+                output[i*s1*s0+j*s0+k] = quantizeDouble(input[i*s1*s0+j*s0+k],range[k*2],range[k*2+1]);
             }
 }
 
@@ -1788,7 +1803,7 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   double *eigenvec, double verextent2, double swidth, double sstep, int nOutChannel, float *d_volmem, float *d_volmem2, 
   int *d_dim, int *d_size, double *d_dir1, double *d_dir2, double *d_center, double *imageDouble, double *d_imageDouble,
   unsigned char *imageQuantized, Hale::Viewer &viewer, Hale::Viewer &viewer2, Hale::Polydata *hpldview2, 
-  Hale::Polydata *hpld_inter, double spherescale, Hale::Polydata *hpld_sq_inter, bool statePKey)
+  Hale::Polydata *hpld_inter, double spherescale, Hale::Polydata *hpld_sq_inter, bool statePKey, int kern)
 {
   int count;
   double dir1[3],dir2[3],center[3];
@@ -1892,21 +1907,30 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
 
   //after that call the normal kernel to do MIP
   count = mini;
-  for (int i=0; i<3; i++)
-    center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-    //center[i] = ctmr(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-  
+
   double FT[3];
   double FN[3],FB[3];
   double dr[3],ddr[3];
-  for (int i=0; i<3; i++)
-    dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-    //dr[i] = ctmr_g(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
-  for (int i=0; i<3; i++)
-    ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-    //ddr[i] = ctmr_gg(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
-
+  if (kern==1)
+  {
+    for (int i=0; i<3; i++)
+    {
+      center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+    }
+  }
+  else
+  {
+    for (int i=0; i<3; i++)
+    {
+      center[i] = ctmr(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      dr[i] = ctmr_g(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      ddr[i] = ctmr_gg(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+    }
+  }
+  
   normalize(dr,3);
   normalize(ddr,3);
 
@@ -1945,7 +1969,8 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   short width = size[0];
   short height = size[1];
   
-  quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+  //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+  quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
   setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
   drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
 
@@ -2035,6 +2060,7 @@ main(int argc, const char **argv) {
   char outnameslice[100];
   double verextent; //vertical extent to project MIP
   char *pathprefix;
+  int kern;
   int curVolInMem;
 
   /* boilerplate hest code */
@@ -2051,6 +2077,9 @@ main(int argc, const char **argv) {
 
   hestOptAdd(&hopt, "vex", "ve", airTypeDouble, 1, 1, &verextent, "200",
              "vertical extent in projecting MIP");
+
+  hestOptAdd(&hopt, "kern", "kernel", airTypeInt, 1, 1, &kern, "0",
+             "kernel used in convolution");  
 
   hestOptAdd(&hopt, "dir1", "x y z", airTypeDouble, 3, 3, dir1, "1 0 0",
              "first direction of the generated image");
@@ -2350,9 +2379,16 @@ main(int argc, const char **argv) {
     for (int j=0; j<countseg; j++)
     {
       double curpoint[3];
-      for (int k=0; k<3; k++)
-        curpoint[k] = cubicFilter<double>((double)j*tsep, arr_center[(i-1)*3+k], arr_center[(i)*3+k], arr_center[(i+1)*3+k], arr_center[(i+2)*3+k]);
-        //curpoint[k] = ctmr((double)j*tsep, arr_center[(i-1)*3+k], arr_center[(i)*3+k], arr_center[(i+1)*3+k], arr_center[(i+2)*3+k]);
+      if (kern==1)
+      {
+        for (int k=0; k<3; k++)
+          curpoint[k] = cubicFilter<double>((double)j*tsep, arr_center[(i-1)*3+k], arr_center[(i)*3+k], arr_center[(i+1)*3+k], arr_center[(i+2)*3+k]);
+      }
+      else
+      {
+        for (int k=0; k<3; k++)
+          curpoint[k] = ctmr((double)j*tsep, arr_center[(i-1)*3+k], arr_center[(i)*3+k], arr_center[(i+1)*3+k], arr_center[(i+2)*3+k]);
+      }
       ELL_4V_SET(lpld3->xyzw + 4*cpointind, curpoint[0],curpoint[1],curpoint[2], 1.0);  
       lpld3->indx[cpointind] = cpointind;
 
@@ -2445,6 +2481,7 @@ main(int argc, const char **argv) {
   for (count = 1; count<countline-2; count++)
   {
     curnameind = arr_nameid[count];
+    /*
     for (int i=0; i<3; i++)
     {
       center[i] = cubicFilter<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
@@ -2452,16 +2489,37 @@ main(int argc, const char **argv) {
       printf("ctmr computation: x=%f, a0=%f, a1=%f, a2=%f, a3=%f -> res=%f\n", 0.0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i],center[i]);
     }
     printf("center = %f %f %f\n", center[0],center[1],center[2]);
+    */
     
     double FT[3];
     double FN[3],FB[3];
     double dr[3],ddr[3];
+    /*
     for (int i=0; i<3; i++)
       dr[i] = cubicFilter_G<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
       //dr[i] = ctmr_g(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
     for (int i=0; i<3; i++)
       ddr[i] = cubicFilter_GG<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
       //ddr[i] = ctmr_gg(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+    */
+    if (kern==1)
+    {
+      for (int i=0; i<3; i++)
+      {
+        center[i] = cubicFilter<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+        dr[i] = cubicFilter_G<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+        ddr[i] = cubicFilter_GG<double>(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      }
+    }
+    else
+    {
+      for (int i=0; i<3; i++)
+      {
+        center[i] = ctmr(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+        dr[i] = ctmr_g(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+        ddr[i] = ctmr_gg(0, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      }
+    }
 
     printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
     printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
@@ -2821,7 +2879,8 @@ main(int argc, const char **argv) {
 
     copyImageChannel<double,short>(imageDouble,4,size[0],size[1],1,outdata+count*size[0]*size[1],1,0);
     
-    quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+    //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+    quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
     setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
     drawNCircle(imageQuantized,4,size[0],size[1],0, count, countline/2,countline/2);
 
@@ -3120,15 +3179,18 @@ main(int argc, const char **argv) {
         printf("Error after copying mem from d_volmem to tex2: %s\n", cudaGetErrorString(errCu));
 
     count = 1;
+    /*
     for (int i=0; i<3; i++)
       center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
       //center[i] = ctmr(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
     printf("center = %f %f %f\n", center[0],center[1],center[2]);
+    */
     
     double FT[3];
     double FN[3],FB[3];
     double dr[3],ddr[3];
+    /*
     for (int i=0; i<3; i++)
       dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
       //dr[i] = ctmr_g(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
@@ -3136,6 +3198,25 @@ main(int argc, const char **argv) {
     for (int i=0; i<3; i++)
       ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
       //ddr[i] = ctmr_gg(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+    */
+    if (kern==1)
+    {
+      for (int i=0; i<3; i++)
+      {
+        center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+        dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+        ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      }
+    }
+    else
+    {
+      for (int i=0; i<3; i++)
+      {
+        center[i] = ctmr(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+        dr[i] = ctmr_g(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+        ddr[i] = ctmr_gg(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+      }
+    }    
 
     printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
     printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
@@ -3215,7 +3296,8 @@ main(int argc, const char **argv) {
     short width = size[0];
     short height = size[1];
     
-    quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+    //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+    quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
     setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
 
     drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
@@ -3436,7 +3518,7 @@ main(int argc, const char **argv) {
                             eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, d_volmem2,
                             d_dim, d_size, d_dir1, d_dir2, d_center, imageDouble, d_imageDouble,
                             imageQuantized, viewer, viewer2, hpldview2, 
-                            hpld_inter, spherescale_inter, hpld_sq_inter, statePKey);        
+                            hpld_inter, spherescale_inter, hpld_sq_inter, statePKey, kern);        
       }      
     }
     else
@@ -3450,7 +3532,7 @@ main(int argc, const char **argv) {
                               eigenvec, verextent2, swidth, sstep, nOutChannel, d_volmem, d_volmem2,
                               d_dim, d_size, d_dir1, d_dir2, d_center, imageDouble, d_imageDouble,
                               imageQuantized, viewer, viewer2, hpldview2, 
-                              hpld_inter, spherescale_inter, hpld_sq_inter, statePKey);        
+                              hpld_inter, spherescale_inter, hpld_sq_inter, statePKey, kern);        
         }      
       }
 
@@ -3570,7 +3652,8 @@ main(int argc, const char **argv) {
 
             cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
             
-            quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
             setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
             drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
 
@@ -3596,7 +3679,8 @@ main(int argc, const char **argv) {
 
             cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
             
-            quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
             setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
             drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
 
@@ -3671,7 +3755,8 @@ main(int argc, const char **argv) {
 
           cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
           
-          quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+          //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+          quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
           setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
           drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
 
@@ -4040,15 +4125,18 @@ main(int argc, const char **argv) {
 
             //after that call the normal kernel to do MIP
             count = mini;
+            /*
             for (int i=0; i<3; i++)
               center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
               //center[i] = ctmr(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
 
             printf("center = %f %f %f\n", center[0],center[1],center[2]);
+            */
             
             double FT[3];
             double FN[3],FB[3];
             double dr[3],ddr[3];
+            /*
             for (int i=0; i<3; i++)
               dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
               //dr[i] = ctmr_g(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
@@ -4056,6 +4144,25 @@ main(int argc, const char **argv) {
             for (int i=0; i<3; i++)
               ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
               //ddr[i] = ctmr_gg(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+            */
+            if (kern==1)
+            {
+              for (int i=0; i<3; i++)
+              {
+                center[i] = cubicFilter<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+                dr[i] = cubicFilter_G<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+                ddr[i] = cubicFilter_GG<double>(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+              }
+            }
+            else
+            {
+              for (int i=0; i<3; i++)
+              {
+                center[i] = ctmr(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+                dr[i] = ctmr_g(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+                ddr[i] = ctmr_gg(alpha, arr_center[(count-1)*3+i], arr_center[(count)*3+i], arr_center[(count+1)*3+i], arr_center[(count+2)*3+i]);
+              }
+            }
 
             printf("dr = (%f,%f,%f)\n",dr[0],dr[1],dr[2]);
             printf("ddr = (%f,%f,%f)\n",ddr[0],ddr[1],ddr[2]);
@@ -4102,7 +4209,8 @@ main(int argc, const char **argv) {
             short width = size[0];
             short height = size[1];
             
-            quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
             setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
 
             drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);

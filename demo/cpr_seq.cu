@@ -879,6 +879,166 @@ void kernel_peak(int* dim, int *size, double verextent, double *center, double *
     imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = accAlphaGFP;    
 }
 
+
+//peak with RFP constraint
+__global__
+void kernel_peak_2chan(int* dim, int *size, double verextent, double *center, double *dir1, double *dir2, double swidth, double sstep, int nOutChannel, double* imageDouble
+        )        
+{    
+    int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int j = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    if ((i>=size[0]) || (j>=size[1]))
+        return;
+
+    //temporary test
+    double refstep=sstep, thickness=1.0;
+    double phongKa=0.2, phongKd=0.8;
+    double light_dir[3]={0,0,1};
+    normalize(light_dir,3);
+    double isoval = 400;
+    double alphamax = 1;
+
+    double pixsize = verextent/size[1];
+    int ni = i-size[0]/2;
+    int nj = size[1]/2 - j;
+    double pointi[3];
+    advancePoint(center,dir1,ni*pixsize,pointi);
+    advancePoint(pointi,dir2,nj*pixsize,pointi);
+
+    double mipdir[3];
+    cross(dir1,dir2,mipdir);
+    normalize(mipdir,3);    
+    
+    double curpoint[3];
+    int k;
+    for (k=0; k<3; k++)
+      curpoint[k] = pointi[k] - mipdir[k]*swidth/2;
+   
+    double indPoint[4];
+    double gradgfpi[3];    
+    double pointColor;
+    double alpha;
+    double valgfp;
+    double hessian[9];
+    double hessian_33[3][3];
+    double hessian_33inv[3][3];
+    double hessian_inv[9];
+    double peakdis[3];
+    double len_peakdis;
+    double pointColorGFP;
+    double alphaGFP;
+    double transpGFP = 1;
+    double accColorGFP = 0;
+
+    double gradi[3];
+    double gradi_len;
+    double val;
+    double accColor = 0;
+    double mipVal = -1;
+    double transp = 1;
+
+    for (k=0; k<ceil(swidth/sstep); k++)
+    {
+        if (cu_isInsideDouble(curpoint[0],curpoint[1],curpoint[2],dim[1],dim[2],dim[3]))
+        {
+                val = tex3DBicubic<float,float>(tex5,curpoint[0],curpoint[1],curpoint[2]);
+                
+                gradi[0] = tex3DBicubic_GX<float,float>(tex5,curpoint[0],curpoint[1],curpoint[2]);
+                gradi[1] = tex3DBicubic_GY<float,float>(tex5,curpoint[0],curpoint[1],curpoint[2]);
+                gradi[2] = tex3DBicubic_GZ<float,float>(tex5,curpoint[0],curpoint[1],curpoint[2]);
+
+                //cu_mulMatPoint3(MT_BE_inv, gradi, gradw);
+                gradi_len = lenVec(gradi,3);
+
+                //negating and normalizing
+                for (int l=0; l<3; l++)
+                    gradi[l] = -gradi[l]/gradi_len;
+
+                //depth = (k*1.0+1)/(fc*1.0-nc);
+
+                pointColor = phongKa + phongKd*max(0.0f,dotProduct(gradi,light_dir,3));
+                alpha = cu_computeAlpha(val, gradi_len, isoval, alphamax, thickness);
+                //alpha = 0.5;
+                alpha = 1 - pow(1-alpha,sstep/refstep);
+                transp *= (1-alpha);
+                accColor = accColor*(1-alpha) + pointColor*alpha;
+
+                //valgfp = tex3DBicubic<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);
+                double inalpha = cu_inAlpha(val,gradi_len,isoval,thickness);
+
+                if (inalpha>0)
+                {
+                  computeHessian(hessian,curpoint,tex2);
+
+                  memcpy(hessian_33,hessian,sizeof(double)*9);
+                  invertMat33(hessian_33,hessian_33inv);
+                  memcpy(hessian_inv,hessian_33inv,sizeof(double)*9);              
+
+                  gradgfpi[0] = tex3DBicubic_GX<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);
+                  gradgfpi[1] = tex3DBicubic_GY<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);
+                  gradgfpi[2] = tex3DBicubic_GZ<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);
+                  
+                  cu_mulMatPoint3(hessian_inv,gradgfpi,peakdis);
+                  scaleVector(peakdis,3,-1);
+                  len_peakdis = lenVec(peakdis,3);
+      
+                  double eigenval[3];
+                  eigenOfHess(hessian,eigenval);
+                  //printf("Inside kernel_peak, before checking if eigenval < 0\n");
+                  if (eigenval[0]<0 && eigenval[1]<0 && eigenval[2]<0)
+                  //if (1)
+                  {                
+                    //printf("there is something with eigenval < 0\n");
+                    normalize(peakdis,3);
+                    double maxev = max3(eigenval[0],eigenval[1],eigenval[2]);
+                    pointColorGFP = phongKa + phongKd*max(0.0f,dotProduct(peakdis,light_dir,3));
+                    alphaGFP = cu_inAlphaX(len_peakdis-8,thickness);
+                    //printf("(i,j,k)=(%d,%d,%d); len_peakdis = %f, alphaGFP = %f\n", i,j,k, len_peakdis, alphaGFP);
+                    alphaGFP *= clamp(0,1,lerp(0,1,8.0,-maxev,10.0));
+                    //printf("(i,j,k)=(%d,%d,%d); -maxev = %f, after clamp(0,1,lerp(0,1,40.0,-maxev,41.0)): alphaGFP = %f\n", i,j,k,-maxev, alphaGFP);
+                    alphaGFP = 1 - pow(1-alphaGFP,sstep/refstep);
+                    //debug purpose
+                    //alphaGFP = 1.0;
+                    //printf("(i,j,k)=(%d,%d,%d); after (1 - pow(1-alphaGFP,sstep/refstep)): alphaGFP = %f\n",i,j,k, alphaGFP);
+                    transpGFP *= (1-alphaGFP);
+                    accColorGFP = accColorGFP*(1-alphaGFP) + pointColorGFP*alphaGFP;
+                    //printf("(i,j,k)=(%d,%d,%d); accColorGFP = %f\n", accColorGFP);
+                  }  
+                }                         
+        }
+
+        curpoint[0] = curpoint[0] + mipdir[0]*sstep;
+        curpoint[1] = curpoint[1] + mipdir[1]*sstep;
+        curpoint[2] = curpoint[2] + mipdir[2]*sstep;
+    }
+    
+    double accAlphaGFP = 1 - transpGFP;
+    double accAlpha = 1 - transp;
+
+    //imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = 0;
+    if (accAlpha>0)
+    {        
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = accColor/accAlpha;
+    }
+    else
+    {
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = accColor;
+    }
+    if (accAlphaGFP>0)
+    {
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = accColorGFP/accAlphaGFP;
+    }
+    else
+    {
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = accColorGFP;  
+    }
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = 0;
+        
+    //imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = accAlphaGFP;  
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = accAlpha;    
+}
+
 //currently working in index-space
 //do MIP for a small slice around each point
 __global__
@@ -942,7 +1102,7 @@ void kernel_cpr_2chan(int* dim, int *size, double verextent, double *center, dou
     double phongKa=0.2, phongKd=0.8;
     double light_dir[3]={0,0,1};
     normalize(light_dir,3);
-    double isoval = 800;
+    double isoval = 400;
     double alphamax = 1;
 
     double pixsize = verextent/size[1];
@@ -1014,13 +1174,15 @@ void kernel_cpr_2chan(int* dim, int *size, double verextent, double *center, dou
     {        
         imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = accColor/accAlpha;
         imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = mipVal;
-        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = mipRFP;
+        //imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = mipRFP;
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = 0;
     }
     else
     {        
         imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = accColor;
         imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = mipVal;
-        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = mipRFP;        
+        //imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = mipRFP; 
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = 0;       
     }
     imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = accAlpha;  
 }
@@ -1952,7 +2114,12 @@ void interpolVolAndRender(int &curVolInMem, int mini, double alpha, Queue &queue
   dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
   if (statePKey)
-    kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+  {
+    if (stateIKey)
+      kernel_peak_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+    else
+      kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+  }
   else
   {
     if (stateIKey)
@@ -2141,8 +2308,8 @@ main(int argc, const char **argv) {
   infile.close();
   cout<<"Initialized countline = "<<countline<<endl;
 
-  //double thresdis = 1.0;
-  double thresdis = -1.0; //not checking
+  double thresdis = 1.0;
+  //double thresdis = -1.0; //not checking
   vector<double> vcenter;
   vector<int> vnameid;
 
@@ -2151,8 +2318,8 @@ main(int argc, const char **argv) {
   vcenter.push_back(arr_center[2]);
   vnameid.push_back(arr_nameid[0]);
 
-  //double thresang = 150;
-  double thresang = 200;  //not checking
+  double thresang = 150;
+  //double thresang = 200;  //not checking
   //correction by thresholding distance
   
   for (int i=1; i<countline; i++)
@@ -2934,8 +3101,8 @@ main(int argc, const char **argv) {
       dim3 threadsPerBlock(numThread1D,numThread1D);
       dim3 numBlocks((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
-      //kernel_cpr<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
-      kernel_cpr_2chan<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+      kernel_cpr<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+      //kernel_cpr_2chan<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
       errCu = cudaGetLastError();
       if (errCu != cudaSuccess) 
@@ -2955,7 +3122,7 @@ main(int argc, const char **argv) {
       //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
       quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
       setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
-      drawNCircle(imageQuantized,4,size[0],size[1],0, count, countline/2,countline/2);
+      //drawNCircle(imageQuantized,4,size[0],size[1],0, count, countline/2,countline/2);
 
       hpld->setTexture((char*)"myTextureSampler",(unsigned char *)imageQuantized,size[0],size[1],4);
       scene.add(hpld);
@@ -3342,8 +3509,8 @@ main(int argc, const char **argv) {
     if (errCu != cudaSuccess) 
         printf("Error before kernel_cpr of the first interpolated point, after allocating blocksize: %s\n", cudaGetErrorString(errCu));    
 
-    //kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
-    kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+    kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+    //kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
     errCu = cudaGetLastError();
     if (errCu != cudaSuccess) 
@@ -3708,13 +3875,91 @@ main(int argc, const char **argv) {
       {
         time (&starti);
         stateIKey = !stateIKey;
+
+        if (statePKey)
+        {
+            printf("statePKey = True, doing kernel_peak, tmpcount = %d\n",tmpcount);
+            if (stateIKey)
+              kernel_peak_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            else
+              kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+
+            errCu = cudaGetLastError();
+            if (errCu != cudaSuccess) 
+                printf("Error: %s\n", cudaGetErrorString(errCu));
+
+            errCu = cudaDeviceSynchronize();
+            if (errCu != cudaSuccess) 
+                printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+            cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+            
+            //debug
+            sprintf(outnameslice,"test_peak.nrrd");
+            if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
+              || nrrdSave(outnameslice, ndblpng, NULL)
+                  ) {
+              char *err = biffGetDone(NRRD);
+              printf("%s: couldn't save output:\n%s", argv[0], err);
+              free(err); nrrdNix(ndblpng);
+              exit(1);
+              }
+
+            //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range_p);    
+            setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+            drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
+
+            viewer2.current();
+            hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+
+            viewer.current();
+            hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);                        
+        }
+        else
+        {
+            printf("statePKey = false, doing kernel_cpr, tmpcount = %d\n",tmpcount);
+            if (stateIKey)
+              kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            else
+              kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+
+            errCu = cudaGetLastError();
+            if (errCu != cudaSuccess) 
+                printf("Error: %s\n", cudaGetErrorString(errCu));
+
+            errCu = cudaDeviceSynchronize();
+            if (errCu != cudaSuccess) 
+                printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+            cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+            
+            //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
+            setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+            drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
+
+            viewer2.current();
+            hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+
+            viewer.current();
+            hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);                        
+        }
+        /*
         if (!statePKey)
         {
               if (stateIKey)
                 kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
               else
                 kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
-
+        }
+        else
+        {
+            if (stateIKey)
+              kernel_peak_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            else
+              kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+        }
               errCu = cudaGetLastError();
               if (errCu != cudaSuccess) 
                   printf("Error: %s\n", cudaGetErrorString(errCu));
@@ -3735,7 +3980,8 @@ main(int argc, const char **argv) {
 
               viewer.current();
               hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);             
-        }
+        //}
+        */
       }
     }
 
@@ -3756,7 +4002,10 @@ main(int argc, const char **argv) {
         if (statePKey)
         {
             printf("statePKey = True, doing kernel_peak, tmpcount = %d\n",tmpcount);
-            kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            if (stateIKey)
+              kernel_peak_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            else
+              kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
 
             errCu = cudaGetLastError();
             if (errCu != cudaSuccess) 
@@ -3869,7 +4118,13 @@ main(int argc, const char **argv) {
           verextent2 = verextent2*(1+pcent);
 
           if (statePKey)
-            kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+          {
+          //  kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            if (stateIKey)
+              kernel_peak_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            else
+              kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+          }
           else
           {
             if (stateIKey)
@@ -4326,11 +4581,26 @@ main(int argc, const char **argv) {
             dim3 threadsPerBlock2(numThread1D,numThread1D);
             dim3 numBlocks2((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
-            if (statePKey)
-              kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
-            else
+            //if (statePKey)
+            //  kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            //else
               //kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
-              kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            //  kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+
+            if (statePKey)
+            {
+              if (stateIKey)
+                kernel_peak_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+              else
+                kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            }
+            else
+            {
+              if (stateIKey)
+                kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+              else
+                kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            }            
 
             errCu = cudaGetLastError();
             if (errCu != cudaSuccess) 

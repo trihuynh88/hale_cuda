@@ -896,7 +896,7 @@ void kernel_peak_2chan(int* dim, int *size, double verextent, double *center, do
     double phongKa=0.2, phongKd=0.8;
     double light_dir[3]={0,0,1};
     normalize(light_dir,3);
-    double isoval = 400;
+    double isoval = 800;
     double alphamax = 1;
 
     double pixsize = verextent/size[1];
@@ -1102,7 +1102,7 @@ void kernel_cpr_2chan(int* dim, int *size, double verextent, double *center, dou
     double phongKa=0.2, phongKd=0.8;
     double light_dir[3]={0,0,1};
     normalize(light_dir,3);
-    double isoval = 400;
+    double isoval = 800;
     double alphamax = 1;
 
     double pixsize = verextent/size[1];
@@ -4793,8 +4793,8 @@ main(int argc, const char **argv) {
     printf("curAt = %f,%f,%f\n",viewer2.camera.at()[0],viewer2.camera.at()[1],viewer2.camera.at()[2]);
     printf("preUp = %f,%f,%f\n",preUp[0],preUp[1],preUp[2]);
     printf("curUp = %f,%f,%f\n",viewer2.camera.up()[0],viewer2.camera.up()[1],viewer2.camera.up()[2]);
-    if ((viewer2.camera.from() != preFrom || viewer2.camera.at()!=preAt || viewer2.camera.up()!=preUp)
-        && (viewer2.isMouseReleased()))
+    if ((viewer2.camera.from() != preFrom || viewer2.camera.at()!=preAt || viewer2.camera.up()!=preUp))
+        //&& (viewer2.isMouseReleased()))
     {
       printf("changed viewing angles in view2------------------------------------\n");
       glm::vec3 curZ = glm::normalize(viewer2.camera.up());

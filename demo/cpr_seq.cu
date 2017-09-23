@@ -3747,6 +3747,20 @@ main(int argc, const char **argv) {
   time_t start,end,starti,endi;
   time (&start);
   time (&starti);
+
+  //used for rotating the axis in the second window
+  glm::vec3 preFrom = viewer2.camera.from();
+  glm::vec3 preAt = viewer2.camera.at();
+  glm::vec3 preUp = viewer2.camera.up();
+  //considers (from,at) as y, up as z, and x is side vector (right-handed coordinates)
+  glm::vec3 preZ = glm::normalize(preUp);
+  glm::vec3 preY = glm::normalize(preAt-preFrom);
+  glm::vec3 preX = glm::cross(preY,preZ);
+  //inverse (transpose) of the coordinates (glm matrix is initialized by column-major)
+  glm::mat3 preCoI = glm::mat3(preX[0],preY[0],preZ[0],
+                               preX[1],preY[1],preZ[1],
+                               preX[2],preY[2],preZ[2]);
+
   while(!Hale::finishing){
     glfwWaitEvents();
     int keyPressed = viewer.getKeyPressed();
@@ -4070,6 +4084,96 @@ main(int argc, const char **argv) {
         }
       }
     }
+
+
+    //increasing & decreasing width of the slab
+    if (keyPressed2 == GLFW_KEY_MINUS || keyPressed2 == GLFW_KEY_EQUAL)
+    {
+      tmpcount++;
+      //clock_t end = clock();
+      //double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
+      time (&end);
+      double dif = difftime (end,start);
+      printf("dif time = %f\n", dif);
+      if (dif>0.3)
+      {
+        time (&start);
+        if (keyPressed2 == GLFW_KEY_MINUS)
+          swidth-=2;
+        else
+          swidth+=2;
+  
+        if (statePKey)
+        {
+            if (stateIKey)
+              kernel_peak_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            else
+              kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+
+            errCu = cudaGetLastError();
+            if (errCu != cudaSuccess) 
+                printf("Error: %s\n", cudaGetErrorString(errCu));
+
+            errCu = cudaDeviceSynchronize();
+            if (errCu != cudaSuccess) 
+                printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+            cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+            
+            //debug
+            sprintf(outnameslice,"test_peak.nrrd");
+            if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
+              || nrrdSave(outnameslice, ndblpng, NULL)
+                  ) {
+              char *err = biffGetDone(NRRD);
+              printf("%s: couldn't save output:\n%s", argv[0], err);
+              free(err); nrrdNix(ndblpng);
+              exit(1);
+              }
+
+            //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range_p);    
+            setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+            drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
+
+            viewer2.current();
+            hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+
+            viewer.current();
+            hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);                        
+        }
+        else
+        {
+            if (stateIKey)
+              kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            else
+              kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+
+            errCu = cudaGetLastError();
+            if (errCu != cudaSuccess) 
+                printf("Error: %s\n", cudaGetErrorString(errCu));
+
+            errCu = cudaDeviceSynchronize();
+            if (errCu != cudaSuccess) 
+                printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+            cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+            
+            //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
+            setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+            drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
+
+            viewer2.current();
+            hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+
+            viewer.current();
+            hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);                        
+        }
+      }
+    }
+
+
     //processing zooming in the second window (MIP image)
     if (stateZoom)
     {
@@ -4676,6 +4780,152 @@ main(int argc, const char **argv) {
       checkPath = false;
       viewer.setPaused(false);
     }
+
+    //rotation in the second window
+    printf("testing view params from window 1\n");
+    printf("curFrom = %f,%f,%f\n",viewer.camera.from()[0],viewer.camera.from()[1],viewer.camera.from()[2]);
+    printf("curAt = %f,%f,%f\n",viewer.camera.at()[0],viewer.camera.at()[1],viewer.camera.at()[2]);
+    printf("curUp = %f,%f,%f\n",viewer.camera.up()[0],viewer.camera.up()[1],viewer.camera.up()[2]);
+    printf("before processing the rotation in second window++++++++++++++++++++++++\n");
+    printf("preFrom = %f,%f,%f\n",preFrom[0],preFrom[1],preFrom[2]);
+    printf("curFrom = %f,%f,%f\n",viewer2.camera.from()[0],viewer2.camera.from()[1],viewer2.camera.from()[2]);
+    printf("preAt = %f,%f,%f\n",preAt[0],preAt[1],preAt[2]);
+    printf("curAt = %f,%f,%f\n",viewer2.camera.at()[0],viewer2.camera.at()[1],viewer2.camera.at()[2]);
+    printf("preUp = %f,%f,%f\n",preUp[0],preUp[1],preUp[2]);
+    printf("curUp = %f,%f,%f\n",viewer2.camera.up()[0],viewer2.camera.up()[1],viewer2.camera.up()[2]);
+    if ((viewer2.camera.from() != preFrom || viewer2.camera.at()!=preAt || viewer2.camera.up()!=preUp)
+        && (viewer2.isMouseReleased()))
+    {
+      printf("changed viewing angles in view2------------------------------------\n");
+      glm::vec3 curZ = glm::normalize(viewer2.camera.up());
+      glm::vec3 curY = glm::normalize(viewer2.camera.at()-viewer2.camera.from());
+      glm::vec3 curX = glm::cross(curY,curZ);
+      glm::mat3 curCo = glm::mat3(curX[0],curX[1],curX[2],
+                                  curY[0],curY[1],curY[2],
+                                  curZ[0],curZ[1],curZ[2]);
+      glm::mat3 curTrans = curCo*preCoI;
+
+      preCoI = glm::transpose(curCo);
+      preFrom = viewer2.camera.from();
+      preAt = viewer2.camera.at();
+      preUp = viewer2.camera.up();
+
+      double FT[3];
+      cross(dir1,dir2,FT);
+      glm::mat3 preCo2(FT[0],FT[1],FT[2],
+                       dir1[0],dir1[1],dir1[2],
+                       dir2[0],dir2[1],dir2[2]);
+      glm::mat3 curCo2 = curTrans*preCo2;
+      dir1[0] = curCo2[1][0];
+      dir1[1] = curCo2[1][1];
+      dir1[2] = curCo2[1][2];
+      dir2[0] = curCo2[2][0];
+      dir2[1] = curCo2[2][1];
+      dir2[2] = curCo2[2][2];
+
+      FT[0] = curCo2[0][0];
+      FT[1] = curCo2[0][1];
+      FT[2] = curCo2[0][2];
+
+      cudaMemcpy(d_dir1, dir1, 3*sizeof(double), cudaMemcpyHostToDevice);
+      cudaMemcpy(d_dir2, dir2, 3*sizeof(double), cudaMemcpyHostToDevice);
+        if (statePKey)
+        {
+            if (stateIKey)
+              kernel_peak_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            else
+              kernel_peak<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+
+            errCu = cudaGetLastError();
+            if (errCu != cudaSuccess) 
+                printf("Error: %s\n", cudaGetErrorString(errCu));
+
+            errCu = cudaDeviceSynchronize();
+            if (errCu != cudaSuccess) 
+                printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+            cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+            
+            //debug
+            sprintf(outnameslice,"test_peak.nrrd");
+            if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
+              || nrrdSave(outnameslice, ndblpng, NULL)
+                  ) {
+              char *err = biffGetDone(NRRD);
+              printf("%s: couldn't save output:\n%s", argv[0], err);
+              free(err); nrrdNix(ndblpng);
+              exit(1);
+              }
+
+            //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range_p);    
+            setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+            drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
+
+            viewer2.current();
+            hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+
+            //viewer.current();
+            //hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);                        
+        }
+        else
+        {
+            if (stateIKey)
+              kernel_cpr_2chan<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+            else
+              kernel_cpr<<<numBlocks2,threadsPerBlock2>>>(d_dim, d_size, verextent2, d_center, d_dir1, d_dir2, swidth, sstep, nOutChannel, d_imageDouble);
+
+            errCu = cudaGetLastError();
+            if (errCu != cudaSuccess) 
+                printf("Error: %s\n", cudaGetErrorString(errCu));
+
+            errCu = cudaDeviceSynchronize();
+            if (errCu != cudaSuccess) 
+                printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+            cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+            
+            //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+            quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range);    
+            setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+            drawCircleWithColor(imageQuantized, 4, size[0], size[1], size[0]/2, size[1]/2, 10, 0.1, 255, 0, 0);
+
+            viewer2.current();
+            hpldview2->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);
+
+            //viewer.current();
+            //hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4);                        
+        }
+        viewer.current();
+        glm::mat4 tmat_sq_inter = glm::mat4();
+        
+        tmat_sq_inter[0][0] = dir1[0];
+        tmat_sq_inter[0][1] = dir1[1];
+        tmat_sq_inter[0][2] = dir1[2];
+        tmat_sq_inter[0][3] = 0;
+        tmat_sq_inter[1][0] = dir2[0];
+        tmat_sq_inter[1][1] = dir2[1];
+        tmat_sq_inter[1][2] = dir2[2];
+        tmat_sq_inter[1][3] = 0;
+        tmat_sq_inter[2][0] = FT[0];
+        tmat_sq_inter[2][1] = FT[1];
+        tmat_sq_inter[2][2] = FT[2];
+        tmat_sq_inter[2][3] = 0;
+        tmat_sq_inter[3][0] = center[0];
+        tmat_sq_inter[3][1] = center[1];
+        tmat_sq_inter[3][2] = center[2];
+        tmat_sq_inter[3][3] = 1;
+        
+        glm::mat4 smat_sq_inter = glm::mat4();
+        smat_sq_inter[0][0] = 2;
+        smat_sq_inter[1][1] = 2;
+        glm::mat4 fmat_sq_inter = tmat_sq_inter*smat_sq_inter;
+
+        hpld_sq_inter->model(fmat_sq_inter);    
+        viewer.current();
+        hpld_sq_inter->replaceLastTexture((unsigned char *)imageQuantized,size[0],size[1],4); 
+    }
+
     viewer.current();
     render(&viewer);
     viewer2.current();

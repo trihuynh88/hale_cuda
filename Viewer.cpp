@@ -393,7 +393,10 @@ Viewer::mouseButtonCB(GLFWwindow *gwin, int button, int action, int mods) {
            vwr->_button[0] ? "_" : "^", vwr->_button[1] ? "_" : "^");
   }
   if (vwr->_isPaused)
+  {
+    printf("was set to None because of _isPaused\n");
     vwr->_mode = viewerModeNone;	
+  }
   glfwGetCursorPos(gwin, &xpos, &ypos);
   xf = xpos/vwr->_widthScreen;
   yf = ypos/vwr->_heightScreen;
@@ -406,6 +409,7 @@ Viewer::mouseButtonCB(GLFWwindow *gwin, int button, int action, int mods) {
        ||
        !( 0 < xf && xf < 1 && 0 < yf && yf < 1 )
        /* click didn't seem to be inside window; nothing to do */ ) {
+    printf("was set to None~~~~~~~~~~\n");
     vwr->_mode = viewerModeNone;
   } else {
     /*
@@ -470,15 +474,17 @@ Viewer::cursorPosCB(GLFWwindow *gwin, double xx, double yy) {
   float vsize, ssize, frcX, frcY, rotX, rotY, trnX, trnY;
   glm::vec3 nfrom; // new from; used in various cases
   double fff; // tmp var
-
+  printf("beginning of cursorPosCB() function********************\n");
   if (vwr->_isPaused)
   {
+    printf("mode being set to None in cursorPosCB(), hmmmmmmmm\n");
     vwr->_mode = viewerModeNone;
     vwr->_lastX = xx;
     vwr->_lastY = yy;    
   }
   if (viewerModeNone == vwr->_mode) {
     /* nothing to do here */
+    printf("got kicked out because Mode is None!>>>>>>>>>>>>>\n");
     return;
   }
   if (!AIR_EXISTS(vwr->_lastX) || !AIR_EXISTS(vwr->_lastY)) {
@@ -487,10 +493,12 @@ Viewer::cursorPosCB(GLFWwindow *gwin, double xx, double yy) {
        the real work the next time we're here */
     vwr->_lastX = xx;
     vwr->_lastY = yy;
+    printf("got kicked out because first time seeing _lastX, Y !>>>>>>>>>>>>>\n");
     return;
   }
   /* else we are moving the camera around */
   if (vwr->verbose() > 2) {
+    printf("in suspected place !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     printf("%s(%g,%g): (%s) hello\n", me, xx, yy,
            airEnumStr(viewerMode, vwr->_mode));
   }
@@ -665,6 +673,7 @@ Viewer::Viewer(int width, int height, const char *label, Scene *scene) {
   _sliding = false;
   _stateMasked = 0;
   _stateBKey = 0;
+  _isPaused = false;
 
   // http://www.glfw.org/docs/latest/window.html
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); // Use OpenGL Core v3.2

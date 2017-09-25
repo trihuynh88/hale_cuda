@@ -592,7 +592,8 @@ double cu_inAlphaX(double dis, double thickness)
 {
     if (dis<0)
         return 1.0;
-    return max(0.0,min(1.0,1.4-fabs(dis)/thickness));
+    //return max(0.0,min(1.0,1.4-fabs(dis)/thickness));
+    return max(0.0,min(1.0,1.0-fabs(dis)/thickness));
 }
 
 __host__ __device__
@@ -846,7 +847,9 @@ void kernel_peak(int* dim, int *size, double verextent, double *center, double *
                   pointColorGFP = phongKa + phongKd*max(0.0f,dotProduct(peakdis,light_dir,3));
                   alphaGFP = cu_inAlphaX(len_peakdis-8,thickness);
                   //printf("(i,j,k)=(%d,%d,%d); len_peakdis = %f, alphaGFP = %f\n", i,j,k, len_peakdis, alphaGFP);
+                  
                   alphaGFP *= clamp(0,1,lerp(0,1,8.0,-maxev,10.0));
+                  
                   //printf("(i,j,k)=(%d,%d,%d); -maxev = %f, after clamp(0,1,lerp(0,1,40.0,-maxev,41.0)): alphaGFP = %f\n", i,j,k,-maxev, alphaGFP);
                   alphaGFP = 1 - pow(1-alphaGFP,sstep/refstep);
                   //debug purpose
@@ -995,7 +998,9 @@ void kernel_peak_2chan(int* dim, int *size, double verextent, double *center, do
                     pointColorGFP = phongKa + phongKd*max(0.0f,dotProduct(peakdis,light_dir,3));
                     alphaGFP = cu_inAlphaX(len_peakdis-8,thickness);
                     //printf("(i,j,k)=(%d,%d,%d); len_peakdis = %f, alphaGFP = %f\n", i,j,k, len_peakdis, alphaGFP);
+                    
                     alphaGFP *= clamp(0,1,lerp(0,1,8.0,-maxev,10.0));
+                    
                     //printf("(i,j,k)=(%d,%d,%d); -maxev = %f, after clamp(0,1,lerp(0,1,40.0,-maxev,41.0)): alphaGFP = %f\n", i,j,k,-maxev, alphaGFP);
                     alphaGFP = 1 - pow(1-alphaGFP,sstep/refstep);
                     //debug purpose
@@ -1004,6 +1009,7 @@ void kernel_peak_2chan(int* dim, int *size, double verextent, double *center, do
                     transpGFP *= (1-alphaGFP);
                     accColorGFP = accColorGFP*(1-alphaGFP) + pointColorGFP*alphaGFP;
                     //printf("(i,j,k)=(%d,%d,%d); accColorGFP = %f\n", accColorGFP);
+                    accColorGFP*=inalpha;
                   }  
                 }                         
         }

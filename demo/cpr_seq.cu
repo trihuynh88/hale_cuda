@@ -596,6 +596,12 @@ double cu_inAlphaX(double dis, double thickness)
     return max(0.0,min(1.0,1.0-fabs(dis)/thickness));
 }
 
+__device__
+double cu_inAlphaX2(double dis, double thickness)
+{
+    return max(0.0,1.0-fabs(dis)/thickness);
+}
+
 __host__ __device__
 void normalize(double *a, int s)
 {
@@ -767,10 +773,9 @@ void kernel_interpol2(float *intervol, float *intervol2, int* dim, float alpha)
     intervol2[k*dim[2]*dim[1] + j*dim[1] + i] = lerp(tex3D(tex3,i,j,k),tex3D(tex4,i,j,k),alpha);
 }
 
-
-//finding peak
+//test function
 __global__
-void kernel_peak(int* dim, int *size, double verextent, double *center, double *dir1, double *dir2, double swidth, double sstep, int nOutChannel, double* imageDouble
+void kernel_peak_test(int* dim, int *size, double verextent, double *center, double *dir1, double *dir2, double swidth, double sstep, int nOutChannel, double* imageDouble
         )        
 {    
     int i = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -841,17 +846,150 @@ void kernel_peak(int* dim, int *size, double verextent, double *center, double *
                 if (eigenval[0]<0 && eigenval[1]<0 && eigenval[2]<0)
                 //if (1)
                 {                
-                  //printf("there is something with eigenval < 0\n");
+                  //printf("there is something with eigenval < 0, len_peakdis = %f\n",len_peakdis);
+                  normalize(peakdis,3);
+                  double maxev = max3(eigenval[0],eigenval[1],eigenval[2]);
+                  pointColorGFP = phongKa + phongKd*max(0.0f,dotProduct(peakdis,light_dir,3));
+                  alphaGFP = cu_inAlphaX(len_peakdis-100,thickness);
+                  //printf("(i,j,k)=(%d,%d,%d); len_peakdis = %f, alphaGFP = %f\n", i,j,k, len_peakdis, alphaGFP);
+                  
+                  //temporary disactivated for testing
+                  //alphaGFP *= clamp(0,1,lerp(0,1,8.0,-maxev,10.0));
+                  
+                  //printf("(i,j,k)=(%d,%d,%d); -maxev = %f, after clamp(0,1,lerp(0,1,40.0,-maxev,41.0)): alphaGFP = %f\n", i,j,k,-maxev, alphaGFP);
+                  alphaGFP = 1 - pow(1-alphaGFP,sstep/refstep);
+
+                  //if (alphaGFP>0)
+                  //  printf("alphaGFP > 0\n");
+                  //debug purpose
+                  //alphaGFP = 1.0;
+                  //printf("(i,j,k)=(%d,%d,%d); after (1 - pow(1-alphaGFP,sstep/refstep)): alphaGFP = %f\n",i,j,k, alphaGFP);
+                  //transpGFP *= (1-alphaGFP);
+                  transpGFP = 0;
+                  //accColorGFP = accColorGFP*(1-alphaGFP) + pointColorGFP*alphaGFP;
+                  if (accColorGFP==0)
+                    accColorGFP = len_peakdis;
+                  else
+                  //if (len_peakdis>0)
+                    accColorGFP = min(accColorGFP,len_peakdis);
+                  //printf("(i,j,k)=(%d,%d,%d); accColorGFP = %f\n", accColorGFP);
+                }            
+        }
+
+        curpoint[0] = curpoint[0] + mipdir[0]*sstep;
+        curpoint[1] = curpoint[1] + mipdir[1]*sstep;
+        curpoint[2] = curpoint[2] + mipdir[2]*sstep;
+    }
+    
+    double accAlphaGFP = 1 - transpGFP;
+
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel] = 0;
+    if (accAlphaGFP>0)
+    {
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = accColorGFP/accAlphaGFP;
+        if (accColorGFP/accAlphaGFP>0)
+          printf("accColorGFP/accAlphaGFP = %f, accAlphaGFP = %f\n",accColorGFP/accAlphaGFP,accAlphaGFP);
+    }
+    else
+    {
+        imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = accColorGFP;  
+    }
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel+2] = 0;
+        
+    imageDouble[j*size[0]*nOutChannel+i*nOutChannel+nOutChannel-1] = accAlphaGFP;    
+}
+
+//finding peak
+__global__
+void kernel_peak(int* dim, int *size, double verextent, double *center, double *dir1, double *dir2, double swidth, double sstep, int nOutChannel, double* imageDouble
+        )        
+{    
+    int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+    int j = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    if ((i>=size[0]) || (j>=size[1]))
+        return;
+
+    //temporary test
+    double refstep=sstep, thickness=1.0;
+    double phongKa=0.2, phongKd=0.8;
+    double light_dir[3]={0,0,1};
+    //double light_dir[3]={-1,-1,1};
+    normalize(light_dir,3);
+
+    double pixsize = verextent/size[1];
+    int ni = i-size[0]/2;
+    int nj = size[1]/2 - j;
+    double pointi[3];
+    advancePoint(center,dir1,ni*pixsize,pointi);
+    advancePoint(pointi,dir2,nj*pixsize,pointi);
+
+    double mipdir[3];
+    cross(dir1,dir2,mipdir);
+    normalize(mipdir,3);    
+    
+    double curpoint[3];
+    int k;
+    for (k=0; k<3; k++)
+      curpoint[k] = pointi[k] - mipdir[k]*swidth/2;
+   
+    double indPoint[4];
+    double gradgfpi[3];    
+    double pointColor;
+    double alpha;
+    double valgfp;
+    double hessian[9];
+    double hessian_33[3][3];
+    double hessian_33inv[3][3];
+    double hessian_inv[9];
+    double peakdis[3];
+    double len_peakdis;
+    double pointColorGFP;
+    double alphaGFP;
+    double transpGFP = 1;
+    double accColorGFP = 0;
+
+    for (k=0; k<ceil(swidth/sstep); k++)
+    {
+        if (cu_isInsideDouble(curpoint[0],curpoint[1],curpoint[2],dim[1],dim[2],dim[3]))
+        {
+                computeHessian(hessian,curpoint,tex2);
+
+                memcpy(hessian_33,hessian,sizeof(double)*9);
+                invertMat33(hessian_33,hessian_33inv);
+                memcpy(hessian_inv,hessian_33inv,sizeof(double)*9);              
+
+                gradgfpi[0] = tex3DBicubic_GX<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);
+                gradgfpi[1] = tex3DBicubic_GY<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);
+                gradgfpi[2] = tex3DBicubic_GZ<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);
+                
+                cu_mulMatPoint3(hessian_inv,gradgfpi,peakdis);
+                //scaleVector(peakdis,3,-1);
+                len_peakdis = lenVec(peakdis,3);
+    
+                double eigenval[3];
+                eigenOfHess(hessian,eigenval);
+                //printf("Inside kernel_peak, before checking if eigenval < 0\n");
+                if (eigenval[0]<0 && eigenval[1]<0 && eigenval[2]<0)
+                //if (1)
+                {                
+                  //printf("there is something with eigenval < 0, len_peakdis = %f\n",len_peakdis);
                   normalize(peakdis,3);
                   double maxev = max3(eigenval[0],eigenval[1],eigenval[2]);
                   pointColorGFP = phongKa + phongKd*max(0.0f,dotProduct(peakdis,light_dir,3));
                   alphaGFP = cu_inAlphaX(len_peakdis-8,thickness);
+                  //alphaGFP = cu_computeAlpha(len_peakdis, len_peakdis, 50, 1, thickness);
                   //printf("(i,j,k)=(%d,%d,%d); len_peakdis = %f, alphaGFP = %f\n", i,j,k, len_peakdis, alphaGFP);
                   
+                  //temporary deactivated for testing
                   alphaGFP *= clamp(0,1,lerp(0,1,8.0,-maxev,10.0));
+                  //alphaGFP *= clamp(0,1,lerp(0,1,6.0,-maxev,10.0));
                   
                   //printf("(i,j,k)=(%d,%d,%d); -maxev = %f, after clamp(0,1,lerp(0,1,40.0,-maxev,41.0)): alphaGFP = %f\n", i,j,k,-maxev, alphaGFP);
                   alphaGFP = 1 - pow(1-alphaGFP,sstep/refstep);
+
+                  //if (alphaGFP>0)
+                  //  printf("alphaGFP > 0\n");
                   //debug purpose
                   //alphaGFP = 1.0;
                   //printf("(i,j,k)=(%d,%d,%d); after (1 - pow(1-alphaGFP,sstep/refstep)): alphaGFP = %f\n",i,j,k, alphaGFP);
@@ -872,6 +1010,8 @@ void kernel_peak(int* dim, int *size, double verextent, double *center, double *
     if (accAlphaGFP>0)
     {
         imageDouble[j*size[0]*nOutChannel+i*nOutChannel+1] = accColorGFP/accAlphaGFP;
+        if (accColorGFP/accAlphaGFP>0)
+          printf("accColorGFP/accAlphaGFP = %f, accAlphaGFP = %f\n",accColorGFP/accAlphaGFP,accAlphaGFP);
     }
     else
     {
@@ -983,7 +1123,7 @@ void kernel_peak_2chan(int* dim, int *size, double verextent, double *center, do
                   gradgfpi[2] = tex3DBicubic_GZ<float,float>(tex2,curpoint[0],curpoint[1],curpoint[2]);
                   
                   cu_mulMatPoint3(hessian_inv,gradgfpi,peakdis);
-                  scaleVector(peakdis,3,-1);
+                  //scaleVector(peakdis,3,-1);
                   len_peakdis = lenVec(peakdis,3);
       
                   double eigenval[3];
@@ -1107,8 +1247,11 @@ void kernel_cpr_2chan(int* dim, int *size, double verextent, double *center, dou
     double refstep=sstep, thickness=1.0;
     double phongKa=0.2, phongKd=0.8;
     double light_dir[3]={0,0,1};
+    //double light_dir[3]={1,1,1};
     normalize(light_dir,3);
     double isoval = 800;
+    //double isoval = 400;
+    //double isoval = 1800;
     double alphamax = 1;
 
     double pixsize = verextent/size[1];
@@ -2314,8 +2457,8 @@ main(int argc, const char **argv) {
   infile.close();
   cout<<"Initialized countline = "<<countline<<endl;
 
-  double thresdis = 1.0;
-  //double thresdis = -1.0; //not checking
+  //double thresdis = 1.0;
+  double thresdis = -1.0; //not checking
   vector<double> vcenter;
   vector<int> vnameid;
 
@@ -2324,8 +2467,8 @@ main(int argc, const char **argv) {
   vcenter.push_back(arr_center[2]);
   vnameid.push_back(arr_nameid[0]);
 
-  double thresang = 150;
-  //double thresang = 200;  //not checking
+  //double thresang = 150;
+  double thresang = 200;  //not checking
   //correction by thresholding distance
   
   for (int i=1; i<countline; i++)
@@ -3172,6 +3315,175 @@ main(int argc, const char **argv) {
     }
   }
 
+  /*
+  //testing synthetic data-----------------------------
+  printf("before testing synthetic data\n");
+  {
+      size_t free_byte;
+      size_t total_byte;
+      double free_db;
+      double total_db;
+      double used_db;
+
+      int count = 5;
+      dir1[0] = 1;
+      dir1[1] = 0;
+      dir1[2] = 0;
+      dir2[0] = 0;
+      dir2[1] = 1;
+      dir2[2] = 0;
+      center[0] = queue.getDataDim()[1]/2;
+      center[1] = queue.getDataDim()[2]/2;
+      center[2] = queue.getDataDim()[3]/2;
+
+      cudaError_t errCu;
+      cudaChannelFormatDesc channelDesc;
+      channelDesc = cudaCreateChannelDesc<float>();
+      //cudaArray* d_curvolarr = queue.push(count,arr_nameid,pathprefix,mop);
+      cudaArray* d_curvolarr = d_volumeArray[queue.push(count,arr_nameid,pathprefix,mop)];
+      tex2.normalized = false;                      // access with normalized texture coordinates
+      tex2.filterMode = cudaFilterModeLinear;      // linear interpolation
+      tex2.addressMode[0] = cudaAddressModeBorder;   // wrap texture coordinates
+      tex2.addressMode[1] = cudaAddressModeBorder;
+      tex2.addressMode[2] = cudaAddressModeBorder;
+      cudaBindTextureToArray(tex2, d_curvolarr, channelDesc);
+
+      d_curvolarr = d_volumeArray1[queue.push(count,arr_nameid,pathprefix,mop)];
+      tex5.normalized = false;                      // access with normalized texture coordinates
+      tex5.filterMode = cudaFilterModeLinear;      // linear interpolation
+      tex5.addressMode[0] = cudaAddressModeBorder;   // wrap texture coordinates
+      tex5.addressMode[1] = cudaAddressModeBorder;
+      tex5.addressMode[2] = cudaAddressModeBorder;
+      cudaBindTextureToArray(tex5, d_curvolarr, channelDesc);    
+
+      errCu = cudaMemGetInfo( &free_byte, &total_byte ) ;
+
+      if ( cudaSuccess != errCu ){
+        printf("Error: cudaMemGetInfo fails, %s \n", cudaGetErrorString(errCu) );
+        exit(1);
+      }
+
+      free_db = (double)free_byte ;
+      total_db = (double)total_byte ;
+      used_db = total_db - free_db ;
+      printf("GPU memory usage (after copying memory to Device): used = %f MB, free = %f MB, total = %f MB\n",
+              used_db/1024.0/1024.0, free_db/1024.0/1024.0, total_db/1024.0/1024.0);
+      
+
+      nOutChannel = 4;
+      //int dim[4];
+      //memcpy(dim,queue.getDataDim(),sizeof(int)*4);
+      //printf("dim = %d,%d,%d,%d\n",dim[0],dim[1],dim[2],dim[3]);
+
+      if (!initalized)
+      {
+        imageDouble = new double[size[0]*size[1]*nOutChannel];
+
+        errCu = cudaMalloc(&d_dim, 4*sizeof(int));
+        if ( cudaSuccess != errCu ){
+            printf("Error in Malloc of d_dim: %s \n", cudaGetErrorString(errCu) );
+            exit(1);
+        }
+        errCu = cudaMemcpy(d_dim, queue.getDataDim(), 4*sizeof(int), cudaMemcpyHostToDevice);
+        if ( cudaSuccess != errCu ){
+            printf("Error in memcpy of d_dim: %s \n", cudaGetErrorString(errCu) );
+            exit(1);
+        }
+        errCu = cudaMalloc(&d_dir1, 3*sizeof(double));
+        if ( cudaSuccess != errCu ){
+            printf("Error in Malloc or memcpy: %s \n", cudaGetErrorString(errCu) );
+            exit(1);
+        }      
+        errCu = cudaMalloc(&d_dir2, 3*sizeof(double));      
+        if ( cudaSuccess != errCu ){
+            printf("Error in Malloc or memcpy: %s \n", cudaGetErrorString(errCu) );
+            exit(1);
+        }
+        errCu = cudaMalloc(&d_imageDouble,sizeof(double)*size[0]*size[1]*nOutChannel);
+        if ( cudaSuccess != errCu ){
+            printf("Error in Malloc or memcpy: %s \n", cudaGetErrorString(errCu) );
+            exit(1);
+        }
+        errCu = cudaMalloc(&d_size,2*sizeof(int));
+        if ( cudaSuccess != errCu ){
+            printf("Error in Malloc or memcpy: %s \n", cudaGetErrorString(errCu) );
+            exit(1);
+        }      
+        errCu = cudaMemcpy(d_size,size,2*sizeof(int), cudaMemcpyHostToDevice);
+        if ( cudaSuccess != errCu ){
+            printf("Error in Malloc or memcpy: %s \n", cudaGetErrorString(errCu) );
+            exit(1);
+        }
+        errCu = cudaMalloc(&d_center,3*sizeof(double));
+        if ( cudaSuccess != errCu ){
+            printf("Error in Malloc or memcpy: %s \n", cudaGetErrorString(errCu) );
+            exit(1);
+        }      
+      }
+
+      errCu = cudaMemcpy(d_dir1, dir1, 3*sizeof(double), cudaMemcpyHostToDevice);
+        if ( cudaSuccess != errCu ){
+            printf("Error in Malloc or memcpy: %s \n", cudaGetErrorString(errCu) );
+            exit(1);
+        }    
+      errCu = cudaMemcpy(d_dir2, dir2, 3*sizeof(double), cudaMemcpyHostToDevice);
+        if ( cudaSuccess != errCu ){
+            printf("Error in Malloc or memcpy: %s \n", cudaGetErrorString(errCu) );
+            exit(1);
+        }    
+      errCu = cudaMemcpy(d_center,center,3*sizeof(double), cudaMemcpyHostToDevice);
+        if ( cudaSuccess != errCu ){
+            printf("Error in Malloc or memcpy: %s \n", cudaGetErrorString(errCu) );
+            exit(1);
+        }
+
+      int numThread1D = 16;
+      dim3 threadsPerBlock(numThread1D,numThread1D);
+      dim3 numBlocks((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
+
+      //swidth = queue.getDataDim()[3];
+      //verextent-=100;
+      kernel_peak<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, queue.getDataDim()[3], 0.1, nOutChannel, d_imageDouble);
+      //kernel_cpr<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, queue.getDataDim()[3], 0.05, nOutChannel, d_imageDouble);
+      //kernel_cpr_2chan<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, verextent, d_center, d_dir1, d_dir2, queue.getDataDim()[3], 0.1, nOutChannel, d_imageDouble);
+
+      errCu = cudaGetLastError();
+      if (errCu != cudaSuccess) 
+          printf("Error After first kernel_cpr: %s\n", cudaGetErrorString(errCu));
+
+      errCu = cudaDeviceSynchronize();
+      if (errCu != cudaSuccess) 
+          printf("Error Sync: %s\n", cudaGetErrorString(errCu));
+
+      cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
+
+      short width = size[0];
+      short height = size[1];
+
+      copyImageChannel<double,short>(imageDouble,4,size[0],size[1],1,outdata+count*size[0]*size[1],1,0);
+      
+      //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
+      quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range_p);    
+      setPlane<unsigned char>(imageQuantized, 4, size[0], size[1], 255, 3);
+  
+      initalized = 1;
+      sprintf(outnameslice,"synthetic.png");
+      if (nrrdWrap_va(ndblpng, imageQuantized, nrrdTypeUChar, 3, 4, width, height)
+        || nrrdSave(outnameslice, ndblpng, NULL)
+            ) {
+        char *err = biffGetDone(NRRD);
+        printf("%s: couldn't save output:\n%s", argv[0], err);
+        free(err); nrrdNix(ndblpng);
+        exit(1);
+        }
+
+
+    }
+  printf("finished writing test result\n");
+  return;
+  //end of testing for synthetic data------------------
+  */
+  
   cout<<"Before allocating output nrrd"<<endl;  
   Nrrd *ndbl = nrrdNew();
 
@@ -4281,6 +4593,18 @@ main(int argc, const char **argv) {
       {
         
         glReadPixels(0,0,viewer.widthBuffer(),viewer.heightBuffer(),GL_DEPTH_COMPONENT,GL_FLOAT,zbufferC);  
+
+        //testing
+            sprintf(outnameslice,"depth.nrrd");
+            if (nrrdWrap_va(ndblpng, zbufferC, nrrdTypeFloat, 2, viewer.widthBuffer(), viewer.heightBuffer())
+              || nrrdSave(outnameslice, ndblpng, NULL)
+                  ) {
+              char *err = biffGetDone(NRRD);
+              printf("%s: couldn't save output:\n%s", argv[0], err);
+              free(err); nrrdNix(ndblpng);
+              exit(1);
+              }
+        //end of testing
         int wposwC = viewer.getClickedX();
         int hposwC = viewer.heightBuffer()-viewer.getClickedY();
         double dposwC = zbufferC[hposwC*viewer.widthBuffer()+wposwC];

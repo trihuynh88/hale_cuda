@@ -1,6 +1,6 @@
 TRAJECTORY-BASED SPATIO-TEMPORAL VISUALIZATION OF PIONEERING NEURON
 
-Introduction: This program provides an interactive visualization for the spatio-temporal data in 5D image (multi-channel 3D volume over time), with the main experimental subject is the image of zebrafish embryo captured using light-sheet microscopy. The trajectory of the pioneering neuron is regarded as the main object of interest, and is also used as a direct widget for manipulation and interactive in spatio-temporal domain.
+Introduction: This program provides an interactive visualization for the spatio-temporal data in 5D image (multi-channel 3D volume over time), with the main experimental subject is the image of zebrafish embryo captured using light-sheet microscopy. The trajectory of the pioneering neuron is regarded as the main object of interest, and is also used as a direct widget for manipulation and interaction in spatio-temporal domain.
 
 Requirement: The program is built on top of the following packages: CUDA, Teem, GLM, GLFW.
 
@@ -24,7 +24,7 @@ nvcc -std=c++11 -I/YOUR_DIR/hale_cuda/hale-install/include -I/project/glk/rossc/
 
 Remember to change YOUR_DIR into your path accordingly. After this step, the program will be built into cpr_seq
 
-Testing: This section provides guides to directly run the tool with graphic interface on Midway server through the web.
+Testing: This section provides guides to directly run the tool with graphical interface on Midway server through the web.
 1) Go to the following link and log in: https://midway.rcc.uchicago.edu/
 2) Open a terminal, then type sviz, which will request a visualization node.
 3) Navigate to the directory containing the compiled program (YOUR_DIR/hale_cuda/demo/)

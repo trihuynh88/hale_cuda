@@ -23,10 +23,11 @@
 LIB = libhale.a
 
 #TEEM = $(HOME)/teem-install
-TEEM = $(HOME)/Desktop/Research/softwares/teem-install
-GLM = /usr/local/include/glm/
+TEEM = /project/glk/rossc/code/teem-install
+GLM = /software/glm-0.9-el6-x86_64/include/
+GLFW = /software/glfw-3.1-el6-x86_64/include/
 
-IPATH = -I$(TEEM)/include -I$(GLM)
+IPATH = -I$(TEEM)/include -I$(GLM) -I$(GLFW)
 
 CXX = g++
 AR = ar crs
@@ -38,7 +39,7 @@ SRCS = enums.cpp globals.cpp utils.cpp Camera.cpp Viewer.cpp Program.cpp \
 	Polydata.cpp Scene.cpp
 OBJS = $(SRCS:.cpp=.o)
 
-DEST = $(HOME)/hale-install
+DEST = hale-install
 DEST_LIB = $(DEST)/lib/$(LIB)
 DEST_HDR = $(DEST)/include/$(HDR)
 
@@ -53,9 +54,11 @@ $(LIB): $(OBJS)
 	$(AR) $(LIB) $(OBJS)
 
 $(DEST_LIB): $(LIB)
+	mkdir -p $(DEST)/lib
 	cp $(LIB) $(DEST_LIB)
 
 $(DEST_HDR): $(LIB) $(HDR) $(DEST_LIB)
+	mkdir -p $(DEST)/include
 	cp $(HDR) $(DEST_HDR)
 
 install: $(DEST_LIB) $(DEST_HDR)

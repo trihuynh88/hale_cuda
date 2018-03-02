@@ -2396,7 +2396,7 @@ main(int argc, const char **argv) {
   hparm->respFileEnable = AIR_TRUE;
   hparm->noArgsIsNoProblem = AIR_TRUE;
 
-  hestOptAdd(&hopt, "isize", "sx sy", airTypeInt, 2, 2, size, "200 200",
+  hestOptAdd(&hopt, "isize", "sx sy", airTypeUInt, 2, 2, size, "200 200",
              "output image sizes");
 
   hestOptAdd(&hopt, "vex", "ve", airTypeDouble, 1, 1, &verextent, "200",
@@ -3263,8 +3263,8 @@ main(int argc, const char **argv) {
 
       cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
 
-      short width = size[0];
-      short height = size[1];
+      unsigned short width = size[0];
+      unsigned short height = size[1];
 
       copyImageChannel<double,short>(imageDouble,4,size[0],size[1],1,outdata+count*size[0]*size[1],1,0);
       
@@ -3304,14 +3304,15 @@ main(int argc, const char **argv) {
 
       initalized = 1;
       sprintf(outnameslice,"cpr_seq_%d.png",curnameind);
-      if (nrrdWrap_va(ndblpng, imageQuantized, nrrdTypeUChar, 3, 4, width, height)
-        || nrrdSave(outnameslice, ndblpng, NULL)
-            ) {
-        char *err = biffGetDone(NRRD);
-        printf("%s: couldn't save output:\n%s", argv[0], err);
-        free(err); nrrdNix(ndblpng);
-        exit(1);
-        }
+      //if (nrrdWrap_va(ndblpng, imageQuantized, nrrdTypeUChar, 3, 4, width, height)
+      //  || nrrdSave(outnameslice, ndblpng, NULL)
+      //      ) {
+      //  printf("error in saving cpr_seq_X.png, width=%d, height=%d\n",width,height);
+      //  char *err = biffGetDone(NRRD);
+      //  printf("%s: couldn't save output:\n%s", argv[0], err);
+      //  free(err); nrrdNix(ndblpng);
+      //  exit(1);
+      //  }
     }
   }
 
@@ -3487,16 +3488,16 @@ main(int argc, const char **argv) {
   cout<<"Before allocating output nrrd"<<endl;  
   Nrrd *ndbl = nrrdNew();
 
-  cout<<"Before saving output nrrd"<<endl;
-  if (nrrdWrap_va(ndbl, outdata, nrrdTypeShort, 3, size[0], size[1], countline)
-        || nrrdSave(outname,ndbl,NULL)
-        ) 
-  {
-    char *err = biffGetDone(NRRD);
-    printf("%s: couldn't save output:\n%s", argv[0], err);
-    free(err); nrrdNix(ndbl);
-    exit(1);
-  }
+  //cout<<"Before saving output nrrd"<<endl;
+  //if (nrrdWrap_va(ndbl, outdata, nrrdTypeShort, 3, size[0], size[1], countline)
+  //      || nrrdSave(outname,ndbl,NULL)
+  //      ) 
+  //{
+  //  char *err = biffGetDone(NRRD);
+  //  printf("%s: couldn't save output:\n%s", argv[0], err);
+  //  free(err); nrrdNix(ndbl);
+  //  exit(1);
+  //}
 
   viewer2.current();  
   printf("after setting viewer2.current()\n");
@@ -3842,14 +3843,14 @@ main(int argc, const char **argv) {
 
     //save nrrd file to test
     sprintf(outnameslice,"test.nrrd");
-    if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
-      || nrrdSave(outnameslice, ndblpng, NULL)
-          ) {
-      char *err = biffGetDone(NRRD);
-      printf("%s: couldn't save output:\n%s", argv[0], err);
-      free(err); nrrdNix(ndblpng);
-      exit(1);
-      }
+    //if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
+    //  || nrrdSave(outnameslice, ndblpng, NULL)
+    //      ) {
+    //  char *err = biffGetDone(NRRD);
+    //  printf("%s: couldn't save output:\n%s", argv[0], err);
+    //  free(err); nrrdNix(ndblpng);
+    //  exit(1);
+    //  }
 
 
     short width = size[0];
@@ -4227,15 +4228,15 @@ main(int argc, const char **argv) {
             cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
             
             //debug
-            sprintf(outnameslice,"test_peak.nrrd");
-            if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
-              || nrrdSave(outnameslice, ndblpng, NULL)
-                  ) {
-              char *err = biffGetDone(NRRD);
-              printf("%s: couldn't save output:\n%s", argv[0], err);
-              free(err); nrrdNix(ndblpng);
-              exit(1);
-              }
+            //sprintf(outnameslice,"test_peak.nrrd");
+            //if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
+            //  || nrrdSave(outnameslice, ndblpng, NULL)
+            //      ) {
+            //  char *err = biffGetDone(NRRD);
+            //  printf("%s: couldn't save output:\n%s", argv[0], err);
+            //  free(err); nrrdNix(ndblpng);
+            //  exit(1);
+            //  }
 
             //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
             quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range_p);    
@@ -4350,15 +4351,15 @@ main(int argc, const char **argv) {
             cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
             
             //debug
-            sprintf(outnameslice,"test_peak.nrrd");
-            if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
-              || nrrdSave(outnameslice, ndblpng, NULL)
-                  ) {
-              char *err = biffGetDone(NRRD);
-              printf("%s: couldn't save output:\n%s", argv[0], err);
-              free(err); nrrdNix(ndblpng);
-              exit(1);
-              }
+            //sprintf(outnameslice,"test_peak.nrrd");
+            //if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
+            //  || nrrdSave(outnameslice, ndblpng, NULL)
+            //      ) {
+            //  char *err = biffGetDone(NRRD);
+            //  printf("%s: couldn't save output:\n%s", argv[0], err);
+            //  free(err); nrrdNix(ndblpng);
+            //  exit(1);
+            //  }
 
             //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
             quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range_p);    
@@ -4440,14 +4441,14 @@ main(int argc, const char **argv) {
             
             //debug
             sprintf(outnameslice,"test_peak.nrrd");
-            if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
-              || nrrdSave(outnameslice, ndblpng, NULL)
-                  ) {
-              char *err = biffGetDone(NRRD);
-              printf("%s: couldn't save output:\n%s", argv[0], err);
-              free(err); nrrdNix(ndblpng);
-              exit(1);
-              }
+            //if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
+            //  || nrrdSave(outnameslice, ndblpng, NULL)
+            //      ) {
+            //  char *err = biffGetDone(NRRD);
+            //  printf("%s: couldn't save output:\n%s", argv[0], err);
+            //  free(err); nrrdNix(ndblpng);
+            //  exit(1);
+            //  }
 
             //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
             quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range_p);    
@@ -4595,15 +4596,15 @@ main(int argc, const char **argv) {
         glReadPixels(0,0,viewer.widthBuffer(),viewer.heightBuffer(),GL_DEPTH_COMPONENT,GL_FLOAT,zbufferC);  
 
         //testing
-            sprintf(outnameslice,"depth.nrrd");
-            if (nrrdWrap_va(ndblpng, zbufferC, nrrdTypeFloat, 2, viewer.widthBuffer(), viewer.heightBuffer())
-              || nrrdSave(outnameslice, ndblpng, NULL)
-                  ) {
-              char *err = biffGetDone(NRRD);
-              printf("%s: couldn't save output:\n%s", argv[0], err);
-              free(err); nrrdNix(ndblpng);
-              exit(1);
-              }
+        //    sprintf(outnameslice,"depth.nrrd");
+        //    if (nrrdWrap_va(ndblpng, zbufferC, nrrdTypeFloat, 2, viewer.widthBuffer(), viewer.heightBuffer())
+        //      || nrrdSave(outnameslice, ndblpng, NULL)
+        //          ) {
+        //      char *err = biffGetDone(NRRD);
+        //      printf("%s: couldn't save output:\n%s", argv[0], err);
+        //      free(err); nrrdNix(ndblpng);
+        //      exit(1);
+        //      }
         //end of testing
         int wposwC = viewer.getClickedX();
         int hposwC = viewer.heightBuffer()-viewer.getClickedY();
@@ -4646,12 +4647,12 @@ main(int argc, const char **argv) {
 
 
           sprintf(outnameslice,"dis_trans.png");
-          if (nrrdSave(outnameslice, zbufferDis, NULL)) {
-            char *err = biffGetDone(NRRD);
-            printf("%s: Error saving distance transform:\n%s", argv[0], err);
-            free(err); nrrdNix(zbufferDis);
-            exit(1);
-          }
+          //if (nrrdSave(outnameslice, zbufferDis, NULL)) {
+          //  char *err = biffGetDone(NRRD);
+          //  printf("%s: Error saving distance transform:\n%s", argv[0], err);
+          //  free(err); nrrdNix(zbufferDis);
+          //  exit(1);
+          //}
 
         }
       }
@@ -5177,15 +5178,15 @@ main(int argc, const char **argv) {
             cudaMemcpy(imageDouble, d_imageDouble, sizeof(double)*size[0]*size[1]*nOutChannel, cudaMemcpyDeviceToHost);
             
             //debug
-            sprintf(outnameslice,"test_peak.nrrd");
-            if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
-              || nrrdSave(outnameslice, ndblpng, NULL)
-                  ) {
-              char *err = biffGetDone(NRRD);
-              printf("%s: couldn't save output:\n%s", argv[0], err);
-              free(err); nrrdNix(ndblpng);
-              exit(1);
-              }
+            //sprintf(outnameslice,"test_peak.nrrd");
+            //if (nrrdWrap_va(ndblpng, imageDouble, nrrdTypeDouble, 3, 4, size[0], size[1])
+            //  || nrrdSave(outnameslice, ndblpng, NULL)
+            //      ) {
+            //  char *err = biffGetDone(NRRD);
+            //  printf("%s: couldn't save output:\n%s", argv[0], err);
+            //  free(err); nrrdNix(ndblpng);
+            //  exit(1);
+            //  }
 
             //quantizeImageDouble3D(imageDouble,imageQuantized,4,size[0],size[1]);    
             quantizeImageDouble3D_Range(imageDouble,imageQuantized,4,size[0],size[1],range_p);    

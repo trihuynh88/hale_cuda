@@ -1,1 +1,40 @@
 TRAJECTORY-BASED SPATIO-TEMPORAL VISUALIZATION OF PIONEERING NEURON
+
+Introduction: This program provides an interactive visualization for the spatio-temporal data in 5D image (multi-channel 3D volume over time), with the main experimental subject is the image of zebrafish embryo captured using light-sheet microscopy. The trajectory of the pioneering neuron is regarded as the main object of interest, and is also used as a direct widget for manipulation and interactive in spatio-temporal domain.
+
+Requirement: The program is built on top of the following packages: CUDA, Teem, GLM, GLFW.
+
+Set up: Below is the instruction to compile and set up the program, targeting mainly on UChicago's Midway server.
+1) ssh into Midway server: midway.rcc.uchicago.edu
+2) Make a directory to store the code, let's call it YOUR_DIR.
+3) Clone this repo into YOUR_DIR, and cd to hale_cuda.
+4) Load cuda compiler by calling: module load cuda/7.5
+5) Build the hale library by typing "make", then "make install". The default Makefile includes the paths to prebuilt Teem, GLM, and GLFW libraries, as can be seen in the first lines of Makefile:
+
+TEEM = /project/glk/rossc/code/teem-install
+GLM = /software/glm-0.9-el6-x86_64/include/
+GLFW = /software/glfw-3.1-el6-x86_64/include/
+
+If there are changes in the system, or if you install the new libraries in other directories, make sure to change these paths accordingly.
+After this step, the hale library will be installed to YOUR_DIR/hale_cuda/hale-install
+6) cd to "demo" directory.
+7) Build the visualization program (cpr_seq.cu) by calling this command:
+
+nvcc -std=c++11 -I/YOUR_DIR/hale_cuda/hale-install/include -I/project/glk/rossc/code/teem-install/include -I/software/glm-0.9-el6-x86_64/include -I/software/glfw-3.1-el6-x86_64/include cpr_seq.cu lib/Image.cpp -o cpr_seq -L/YOUR_DIR/hale_cuda/hale-install/lib -L/project/glk/rossc/code/teem-install/lib -L/software/glm-0.9-el6-x86_64/lib64 -L/software/glfw-3.1-el6-x86_64/lib64 -lglfw3 -lGL -lm -ldl -lXinerama -lXrandr -lXi -lXcursor -lX11 -lXxf86vm -lpthread -lhale -lteem -lpng -lz -lbz2 -lGL -lX11 -lXxf86vm -lXrandr -lpthread -lXi
+
+Remember to change YOUR_DIR into your path accordingly. After this step, the program will be built into cpr_seq
+
+Testing: This section provides guides to directly run the tool with graphic interface on Midway server through the web.
+1) Go to the following link and log in: https://midway.rcc.uchicago.edu/
+2) Open a terminal, then type sviz, which will request a visualization node.
+3) Navigate to the directory containing the compiled program (YOUR_DIR/hale_cuda/demo/)
+4) Execute the program by the following command:
+vglrun ./cpr_seq -isize 200 200 -swidth 1 -sstep 0.01 -i coord_newtrack_pioneer_scale_old.txt -pref /project/glk/vprince/16-05-05/vis/hp/hp2
+
+Remember to add vglrun at the beginning to be able to have graphical interface. The program runs with some parameters such as:
+-isize: the image size of the cutting plane orthogonal to the trajectory to visualize.
+-swidth: the width of the image slab to consider.
+-sstep: the step size of the ray during ray casting for rendering.
+-i: input coordinates of the pioneering neuron trajectory.
+-pref: prefix to the path containing the images.
+

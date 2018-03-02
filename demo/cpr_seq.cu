@@ -2692,9 +2692,10 @@ main(int argc, const char **argv) {
                      glm::vec3(camup[0], camup[1], camup[2]),
                      camFOV, (float)camsize[0]/camsize[1],
                      camnc, camfc, camortho);
+  viewer.current();
   viewer.refreshCB((Hale::ViewerRefresher)render);
   viewer.refreshData(&viewer);
-  viewer.current();
+  
 
   Hale::Scene scene2;
   Hale::Viewer viewer2(camsize[0], camsize[1], "Viewer2", &scene2);
@@ -2704,8 +2705,10 @@ main(int argc, const char **argv) {
                      glm::vec3(camup[0], camup[1], camup[2]),
                      camFOV, (float)camsize[0]/camsize[1],
                      camnc, camfc, camortho);
-  viewer2.refreshCB((Hale::ViewerRefresher)render);
-  viewer2.refreshData(&viewer2);
+  //viewer2.current();
+  //viewer2.refreshCB((Hale::ViewerRefresher)render);
+  //viewer2.refreshData(&viewer2);
+  //viewer.current();
 
   printf("Initialized viewer\n");
 
@@ -3509,6 +3512,7 @@ main(int argc, const char **argv) {
                          NULL,//Hale::ProgramLib(Hale::preprogramAmbDiffSolid),
                          "square");
     Hale::Program *newprog2 = new Hale::Program("texdemo-vert.glsl","texdemo-frag.glsl");
+    //Hale::Program *newprog2 = new Hale::Program("tex-vert-cpr.glsl","texdemo-frag.glsl");
     newprog2->compile();
     newprog2->bindAttribute(Hale::vertAttrIdxXYZW, "positionVA");
     newprog2->bindAttribute(Hale::vertAttrIdxRGBA, "colorVA");

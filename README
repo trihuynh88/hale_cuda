@@ -38,3 +38,27 @@ Remember to add vglrun at the beginning to be able to have graphical interface. 
 -i: input coordinates of the pioneering neuron trajectory.
 -pref: prefix to the path containing the images.
 
+--------------------------------------------------------------------
+SOME OTHER TOOLS
+The repo also contains some other tools, i.e., tex_volume_test2file.cu and cpr_seq_savespacetime.cu
+* The tex_volume_test2file.cu contains code to generate volume rendering for the whole volume, given the desired viewpoint. This file can be compiled similarly as the way we did for cpr_seq.cu. An example running command for this program is:
+
+./tex_volume_test2file -i 0-smlhp.nrrd -i2 1-sml.nrrd -fr 2453.95 1850.87 4520.28 -at 2575.22 2259.17 461.956 -up -0.996969 0.0745429 -0.0222908 -nc -400 -fc 400 -fov 18 -isize 726 528 -ldir -1 -1 -2 -step 1.5 -iso 1800 -thick 0.5
+
+Some input arguments are as follows:
+- "i" and "i2": represent two input files corresponding to 2 channels of the volume ("i" used for GFP, "i2" used for RFP).
+- "fr" "at" "up": define the viewing coordinate frame.
+- "nc" and "fc": near and far clipping planes.
+- "fov": field of view. 
+- "isize": the image size.
+- "ldir": light direction.
+- "step": step size during ray casting.
+- "iso": isovalue to render the RFP channel.
+- "thich": thichness of the isosurface.
+
+* The cpr_seq_savespacetime.cu contains code to generate the rendering of sampled cutting plane along the pioneering neuron trajectory, across multiple time steps. A sample running command is:
+
+./cpr_seq_savespacetime -isize 200 200 -swidth 1 -sstep 0.01 -i coord_newtrack_pioneer_all_scaled.txt -pref /project/glk/vprince/16-05-05/vis/hp/hp2scivisdata/hp2
+
+with input arguments similar to the cpr_seq.cu file above. After running this command, it will generate the ouput into the directory "spacetime_out", with the pictures named "cpr_seq_x_y.png", where x is the image timestep, and y is the sample index along the trajectory.
+

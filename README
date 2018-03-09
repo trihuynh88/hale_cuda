@@ -62,3 +62,10 @@ Some input arguments are as follows:
 
 with input arguments similar to the cpr_seq.cu file above. After running this command, it will generate the ouput into the directory "spacetime_out", with the pictures named "cpr_seq_x_y.png", where x is the image timestep, and y is the sample index along the trajectory.
 
+After the tool generated the output folder, the kymograph-like summary can be created using unu command (from Teem). An example command is:
+
+unu join -i cpr_seq_2*.png -a 3 | unu axsplit -a 3 -s 275 22 | unu slice -a 0 -p 1 | unu crop -min 95 95 0 0 -max m+10 m+10 M M | unu axmerge -a 0 | unu project -a 0 -m mean -t float | unu resample -s x5 x5 -k box -c cell | unu quantize -b 8 -o kymograph.png
+
+where the parameters 275 22 are the number of sampled points (275) along the trajectory (total y in cpr_seq_x_y.png), and the number of sampled time steps (22) from the total timesteps (total of sampled x in cpr_seq_x_y.png). The above unu command will generate the result one-channel kymograph into kymograph.png. To generate the two-channel version, use the following command:
+
+unu join -i cpr_seq_2*.png -a 3 | unu axsplit -a 3 -s 275 22 | unu crop -min 0 95 95 0 0 -max M m+10 m+10 M M | unu permute -p 0 1 4 2 3 | unu axmerge -a 1 3 | unu quantize -b 8 -o kymo2chan.png

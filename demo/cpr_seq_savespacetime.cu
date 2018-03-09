@@ -2985,14 +2985,14 @@ main(int argc, const char **argv) {
 
         char commandstring[100], dirstring[100];
         //sprintf(dirstring,"st_%d_%d",timespacing,density);
-        sprintf(dirstring,"st_4_0.5_new");
+        sprintf(dirstring,"spacetime_out");
         sprintf(commandstring,"mkdir -p %s",dirstring);
         printf("before creating directory\n");
         const int dir_err = system(commandstring);
         if (-1 == dir_err)
         {
           printf("Error creating directory!n");
-          exit(1);
+          //exit(1);
         }
         sprintf(outnameslice,"%s/cpr_seq_%03d_%03d.png",dirstring,arr_nameid[countim],cpointind);
         printf("saving %s\n",outnameslice);

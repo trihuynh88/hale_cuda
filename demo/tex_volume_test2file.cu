@@ -1844,7 +1844,7 @@ main(int argc, const char **argv) {
     dim3 threadsPerBlock(numThread1D,numThread1D);
     dim3 numBlocks((size[0]+numThread1D-1)/numThread1D,(size[1]+numThread1D-1)/numThread1D);
 
-    kernel_mip<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, hor_extent, ver_extent, channel, pixSize,
+    kernel<<<numBlocks,threadsPerBlock>>>(d_dim, d_size, hor_extent, ver_extent, channel, pixSize,
                                           d_center, d_viewdir, d_right, d_up, d_light_dir, nc, fc, raystep, refstep, d_mat_trans,
                                           d_mat_trans_inv, d_MT_BE_inv, phongKa, phongKd, isoval, alphamax, thickness, nOutChannel, d_imageDouble                                          
                                           );

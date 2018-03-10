@@ -2994,9 +2994,9 @@ main(int argc, const char **argv) {
           printf("Error creating directory!n");
           //exit(1);
         }
-        sprintf(outnameslice,"%s/cpr_seq_%03d_%03d.nrrd",dirstring,arr_nameid[countim],cpointind);
+        sprintf(outnameslice,"%s/cpr_seq_%03d_%03d.png",dirstring,arr_nameid[countim],cpointind);
         printf("saving %s\n",outnameslice);
-        if (nrrdWrap_va(ndblpng, imageQuantized, nrrdTypeUChar, 3, 4, width, height)
+        if (nrrdWrap_va(ndblpng, imageQuantized, nrrdTypeUChar, 3, (size_t)4, (size_t)width, (size_t)height)
           || nrrdSave(outnameslice, ndblpng, NULL)
               ) {
           char *err = biffGetDone(NRRD);
